@@ -1,3 +1,6 @@
+use crate::normalise_dir;
+use crate::{Values, VarTypes};
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process;
@@ -8,6 +11,7 @@ pub enum Commands {
     Ls,
     Cd,
     Pwd,
+    Let,
 }
 
 pub fn search(t: &Vec<&str>) -> Option<Commands> {
@@ -17,77 +21,38 @@ pub fn search(t: &Vec<&str>) -> Option<Commands> {
         "ls" => Some(Commands::Ls),
         "cd" => Some(Commands::Cd),
         "pwd" => Some(Commands::Pwd),
+        "let" => Some(Commands::Let),
         _ => None,
     }
 }
 
 impl Commands {
-    pub fn run(&self, t: &Vec<&str>, dir: &PathBuf) -> Option<PathBuf> {
-        let mut args: Option<&Vec<String>> = None;
-        let temp;
-        if t.len() > 1 {
-            temp = parse_arg(t[1]);
-            args = Some(&temp);
-        }
+    pub fn run(&self, values: &mut Values) -> Vec<Result<String, String>> {
         match self {
             Self::Exit => exit(),
-            Self::Echo => echo(&args),
-            Self::Ls => ls(&args, &dir),
-            Self::Cd => cd(&args, &dir),
-            Self::Pwd => pwd(&dir),
+            Self::Echo => echo(values),
+            Self::Ls => ls(values),
+            Self::Cd => cd(values),
+            Self::Pwd => pwd(values),
+            Self::Let => let_(values),
         }
     }
 }
 
-fn parse_arg(s: &str) -> Vec<String> {
-    let mut result: Vec<String> = Vec::new();
-    let mut temp = String::new();
-    let mut dq: i32 = -1;
-    let mut sq: i32 = -1;
-    let s_b = s.as_bytes();
-    for i in 0..s.len() {
-        if s_b[i] == b'\"' && sq == -1 {
-            if dq == -1 {
-                dq = i as i32;
-                continue;
-            }
-            dq = -1;
-            continue;
-        }
-        if s_b[i] == b'\'' && dq == -1 {
-            if sq == -1 {
-                sq = i as i32;
-                continue;
-            }
-            sq = -1;
-            continue;
-        }
-        if s_b[i] == b' ' && dq == -1 && sq == -1 {
-            result.push(temp.clone());
-            temp = String::new();
-            continue;
-        }
-        temp.push(s_b[i] as char);
-    }
-    result.push(temp.clone());
-    return result;
-}
-
-fn exit() -> Option<PathBuf> {
+fn exit() -> Vec<Result<String, String>> {
     process::exit(1);
 }
 
-fn echo(args: &Option<&Vec<String>>) -> Option<PathBuf> {
-    if args.is_none() {
-        println!();
-        return None;
+fn echo(values: &mut Values) -> Vec<Result<String, String>> {
+    if values.args.is_none() {
+        return vec![Ok(String::new())];
     }
-    let args_ = args.clone().unwrap();
+    let args_ = values.args.clone().unwrap();
+    let mut result = String::new();
     for s in args_ {
-        print!("{} ", s);
+        result = format!("{}{}\n", result, s);
     }
-    println!();
-    return None;
+    return vec![Ok(result)];
 }
 
 fn dir_exists(dir: &PathBuf) -> i32 {
@@ -103,76 +68,142 @@ fn dir_exists(dir: &PathBuf) -> i32 {
     return 0;
 }
 
-fn push_dir(arg: &str, dir: &PathBuf) -> Option<PathBuf> {
+fn push_dir(arg: &str, dir: &PathBuf) -> PathBuf {
     let mut dir_ = dir.clone();
+    let mut arg_ = arg.chars();
+    if arg_.next().unwrap() == '~' {
+        dir_.push(PathBuf::from(String::from(format!(
+            "{}{}",
+            env::home_dir().unwrap().to_string_lossy(),
+            arg_.as_str()
+        ))));
+        return dir_;
+    }
     dir_.push(PathBuf::from(arg));
-    Some(dir_)
+    return dir_;
 }
 
-fn cd(args: &Option<&Vec<String>>, dir: &PathBuf) -> Option<PathBuf> {
-    if args.is_none() {
-        println!();
-        return None;
+fn cd(values: &mut Values) -> Vec<Result<String, String>> {
+    if values.args.is_none() {
+        return vec![Ok(String::new())];
     }
-    if args.unwrap().len() > 1 {
-        eprintln!("cd: too many arguments");
-        return None;
+    let args = values.args.clone().unwrap();
+    if args.len() > 1 {
+        return vec![Err(String::from("too many arguments"))];
     }
-    let arg = &args.unwrap()[0];
-    let dir_ = push_dir(arg, dir).unwrap();
-    match dir_exists(&dir_) {
+    let arg = &args[0];
+    let dir = push_dir(arg, &values.dir);
+    match dir_exists(&dir) {
         -1 => {
-            eprintln!("cd: cannot access {}: No such file or directory", arg);
-            return None;
+            return vec![Err(format!(
+                "cannot access {}: No such file or directory",
+                arg
+            ))];
         }
         0 => {
-            eprintln!("cd: {}: Not a directory", arg);
-            return None;
+            return vec![Err(format!("{}: Not a directory", arg))];
         }
         _ => {}
     }
-    return Some(dir_);
+    values.dir = normalise_dir(&dir);
+    return vec![Ok(String::new())];
 }
 
-fn ls(args: &Option<&Vec<String>>, dir: &PathBuf) -> Option<PathBuf> {
-    if args.is_none() {
-        let paths = fs::read_dir(dir).unwrap();
+fn ls(values: &mut Values) -> Vec<Result<String, String>> {
+    let mut result: Vec<Result<String, String>> = Vec::new();
+    if values.args.is_none() {
+        let mut s = String::new();
+        let paths = fs::read_dir(&values.dir).unwrap();
 
         for path in paths {
-            println!("{}", path.unwrap().file_name().to_string_lossy());
+            s += path.unwrap().file_name().to_str().unwrap();
+            s.push('\n');
         }
-        return None;
+        result.push(Ok(s));
+        return result;
     }
-    for arg in args.unwrap() {
-        match dir_exists(&push_dir(arg, dir).unwrap()) {
+    let args = values.args.clone().unwrap();
+    let check = args.len() > 1;
+    let mut s = String::new();
+    for arg in args {
+        match dir_exists(&push_dir(&arg, &values.dir)) {
             -1 => {
-                eprintln!("ls: cannot access {}: No such file or directory", arg);
+                result.push(Err(format!(
+                    "cannot access {}: No such file or directory\n",
+                    arg
+                )));
                 continue;
             }
             0 => {
-                println!("{}", arg);
+                result.push(Ok(arg + "\n"));
                 continue;
             }
             _ => {}
         }
-        let check = args.unwrap().len() > 1;
         if check {
-            println!("{}:", arg);
+            s += &format!("{}:\n", arg);
         }
-        let dir_ = cd(&Some(&vec![String::from(arg.clone())]), &dir).unwrap();
+        let dir_ = push_dir(&arg, &values.dir);
         let paths = fs::read_dir(dir_).unwrap();
 
         for path in paths {
             if check {
-                print!("  ");
+                s += "  ";
             }
-            println!("{}", path.unwrap().file_name().to_string_lossy());
+            s += path.unwrap().file_name().to_str().unwrap();
+            s.push('\n');
         }
     }
-    return None;
+    if s.is_empty() {
+        return result;
+    }
+    result.push(Ok(s));
+    return result;
 }
 
-fn pwd(dir: &PathBuf) -> Option<PathBuf> {
-    println!("{}", dir.to_string_lossy());
-    return None;
+fn pwd(values: &mut Values) -> Vec<Result<String, String>> {
+    return vec![Ok(String::from(values.dir.to_str().unwrap()) + "\n")];
+}
+
+fn let_(values: &mut Values) -> Vec<Result<String, String>> {
+    if values.args.is_none() {
+        return vec![Err(String::from("expect variable name"))];
+    }
+    let args = values.args.clone().unwrap();
+    if args.len() > 1 {
+        return vec![Err(String::from("too many arguments"))];
+    }
+    let mut var_name = String::new();
+    let mut var_val = String::new();
+    let mut found_eq = false;
+    for c in args[0].chars() {
+        if found_eq {
+            var_val.push(c);
+            continue;
+        }
+        if c == '=' {
+            found_eq = true;
+            continue;
+        }
+        var_name.push(c);
+    }
+    if var_name.parse::<i32>().is_ok() {
+        return vec![Err(format!("{} is not a valid name", var_name))];
+    }
+    if !found_eq {
+        values.vars.insert(args[0].clone(), VarTypes::N);
+        return vec![Ok(String::new())];
+    }
+
+    match var_val.parse::<i32>() {
+        Ok(x) => {
+            values.vars.insert(var_name, VarTypes::I(x));
+            return vec![Ok(String::new())];
+        }
+
+        Err(_) => {
+            values.vars.insert(var_name, VarTypes::S(var_val));
+            return vec![Ok(String::new())];
+        }
+    }
 }

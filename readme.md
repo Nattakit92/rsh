@@ -9,4 +9,6 @@ RSH is a simple shell written in rust, build for educational purpose. My goal is
 | cd | ✅ Done |
 | ls | ✅ Done |
 | pwd | ✅ Done |
-| echo | 🟨 InProgress |
+| echo | ✅ Done |
+| let | ✅ Done |
+| eval | 🟨 In Progress |

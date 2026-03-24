@@ -1,14 +1,47 @@
+use std::collections::HashMap;
 use std::env;
 use std::io;
 use std::path::PathBuf;
+
 mod commands;
+pub mod parsing;
+
+pub enum VarTypes {
+    ///int type
+    I(i32),
+    ///string type
+    S(String),
+    /// none type
+    N,
+}
+
+pub struct Values {
+    dir: PathBuf,
+    args: Option<Vec<String>>,
+    vars: HashMap<String, VarTypes>,
+}
+
+pub fn normalise_dir(path: &PathBuf) -> PathBuf {
+    let mut dir: PathBuf = PathBuf::new();
+    for d in path {
+        if d == ".." {
+            dir.pop();
+            continue;
+        }
+        if d == "." {
+            continue;
+        }
+        dir.push(d);
+    }
+    return dir;
+}
 
 fn input() -> String {
     io::Write::flush(&mut io::stdout()).expect("flush failed!");
     let mut s = String::new();
     match io::stdin().read_line(&mut s) {
         Ok(_) => (),
-        Err(err) => println!("{}", err),
+        Err(err) => eprintln!("{}", err),
     };
     return s;
 }
@@ -20,24 +53,14 @@ fn tokenizer(s: &str) -> Vec<&str> {
     }
 }
 
-fn normalise_dir(path: &PathBuf) -> PathBuf {
-    let mut dir: PathBuf = PathBuf::new();
-    for d in path {
-        if d == ".." {
-            dir.pop();
-            continue;
-        }
-        if d != "." {
-            dir.push(d);
-        }
-    }
-    return dir;
-}
-
 fn main() {
-    let mut dir = env::current_dir().unwrap();
+    let mut values: Values = Values {
+        dir: env::current_dir().unwrap(),
+        args: None,
+        vars: HashMap::new(),
+    };
     loop {
-        print!("$ ");
+        print!("{} $ ", values.dir.to_string_lossy());
         let s = input();
         if s == "\n" {
             continue;
@@ -47,16 +70,31 @@ fn main() {
             continue;
         }
         let command = commands::search(&t);
-        let path = match command {
-            Some(com) => com.run(&t, &dir),
-            None => {
-                println!("Unknown command: {}", t[0]);
-                continue;
-            }
-        };
-        if path == None {
+        if command.is_none() {
+            eprintln!("Unknown command: {}", t[0]);
             continue;
         }
-        dir = normalise_dir(&path.unwrap());
+        if t.len() > 1 {
+            match parsing::parse_arg(t[1], &values.vars) {
+                Ok(x) => {
+                    values.args = Some(x);
+                    ()
+                }
+                Err(err) => {
+                    eprintln!("{}: {}", t[0], err);
+                    continue;
+                }
+            }
+        } else {
+            values.args = None;
+        }
+        let result = command.unwrap().run(&mut values);
+        for r in result {
+            match r {
+                Ok(x) => print!("{}", x),
+                Err(x) => eprint!("{}", x),
+            }
+        }
+        values.args = None;
     }
 }
