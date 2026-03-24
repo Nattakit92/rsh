@@ -92,7 +92,7 @@ fn main() {
         for r in result {
             match r {
                 Ok(x) => print!("{}", x),
-                Err(x) => eprint!("{}", x),
+                Err(x) => eprint!("{}: {}", t[0], x),
             }
         }
         values.args = None;

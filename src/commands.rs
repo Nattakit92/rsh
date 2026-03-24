@@ -96,12 +96,12 @@ fn cd(values: &mut Values) -> Vec<Result<String, String>> {
     match dir_exists(&dir) {
         -1 => {
             return vec![Err(format!(
-                "cannot access {}: No such file or directory",
+                "cannot access {}: No such file or directory\n",
                 arg
             ))];
         }
         0 => {
-            return vec![Err(format!("{}: Not a directory", arg))];
+            return vec![Err(format!("{}: Not a directory\n", arg))];
         }
         _ => {}
     }
