@@ -6,6 +6,7 @@ use std::path::PathBuf;
 mod commands;
 pub mod parsing;
 
+#[derive(Clone)]
 pub enum VarTypes {
     ///int type
     I(i32),
@@ -13,6 +14,29 @@ pub enum VarTypes {
     S(String),
     /// none type
     N,
+}
+
+impl VarTypes {
+    pub fn get_i(&self) -> i32 {
+        if let Self::I(i) = self {
+            return *i;
+        }
+        return 0;
+    }
+    pub fn get_s(&self) -> String {
+        match self {
+            Self::I(x) => x.to_string(),
+            Self::S(x) => x.clone(),
+            Self::N => String::new(),
+        }
+    }
+    pub fn get_type(&self) -> char {
+        match self {
+            Self::I(_) => 'I',
+            Self::S(_) => 'S',
+            Self::N => 'N',
+        }
+    }
 }
 
 pub struct Values {
