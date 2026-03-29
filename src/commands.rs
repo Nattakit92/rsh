@@ -1,40 +1,80 @@
 use crate::normalise_dir;
 use crate::{Values, VarTypes};
 use std::env;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::PathBuf;
-use std::process;
+use std::process::{self, Command};
 
-pub enum Commands {
+pub enum Commands<'a> {
+    Unknown(&'a str),
     Exit,
     Echo,
     Ls,
     Cd,
     Pwd,
     Let,
+    Touch,
+    Cat,
+    Mkdir,
 }
 
-pub fn search(t: &Vec<&str>) -> Option<Commands> {
-    match t[0] {
+pub fn search<'a>(command: &'a str) -> Option<Commands<'a>> {
+    match command {
         "exit" => Some(Commands::Exit),
         "echo" => Some(Commands::Echo),
         "ls" => Some(Commands::Ls),
         "cd" => Some(Commands::Cd),
         "pwd" => Some(Commands::Pwd),
         "let" => Some(Commands::Let),
-        _ => None,
+        "touch" => Some(Commands::Touch),
+        "cat" => Some(Commands::Cat),
+        "mkdir" => Some(Commands::Mkdir),
+        _ => Some(Commands::Unknown(command)),
     }
 }
 
-impl Commands {
+impl<'a> Commands<'a> {
     pub fn run(&self, values: &mut Values) -> Vec<Result<String, String>> {
         match self {
+            Self::Unknown(command) => try_run(command, values),
             Self::Exit => exit(),
             Self::Echo => echo(values),
             Self::Ls => ls(values),
             Self::Cd => cd(values),
             Self::Pwd => pwd(values),
             Self::Let => let_(values),
+            Self::Touch => touch(values),
+            Self::Cat => cat(values),
+            Self::Mkdir => mkdir(values),
+        }
+    }
+}
+
+fn try_run(command: &str, values: &mut Values) -> Vec<Result<String, String>> {
+    let mut c = Command::new(command);
+    let result;
+    if values.args.is_none() {
+        result = c.spawn();
+    } else {
+        let args = values.args.clone().unwrap();
+        result = c.args(args).spawn();
+    }
+    match result {
+        Ok(mut s) => {
+            let mut x = String::new();
+            s.wait().expect("Cannot run command");
+            if s.stdout.is_none() {
+                return vec![Ok(String::new())];
+            }
+            s.stdout
+                .unwrap()
+                .read_to_string(&mut x)
+                .expect("Cannot open file");
+            vec![Ok(x)]
+        }
+        Err(_) => {
+            vec![Err(String::from("Unknown command\n"))]
         }
     }
 }
@@ -167,11 +207,11 @@ fn pwd(values: &mut Values) -> Vec<Result<String, String>> {
 
 fn let_(values: &mut Values) -> Vec<Result<String, String>> {
     if values.args.is_none() {
-        return vec![Err(String::from("expect variable name"))];
+        return vec![Err(String::from("expect variable name\n"))];
     }
     let args = values.args.clone().unwrap();
     if args.len() > 1 {
-        return vec![Err(String::from("too many arguments"))];
+        return vec![Err(String::from("too many arguments\n"))];
     }
     let mut var_name = String::new();
     let mut var_val = String::new();
@@ -206,4 +246,93 @@ fn let_(values: &mut Values) -> Vec<Result<String, String>> {
             return vec![Ok(String::new())];
         }
     }
+}
+
+fn touch(values: &mut Values) -> Vec<Result<String, String>> {
+    if values.args.is_none() {
+        return vec![Ok(String::new())];
+    }
+    let args = values.args.clone().unwrap();
+    let mut result: Vec<Result<String, String>> = Vec::new();
+    for i in 0..args.len() {
+        let x = File::create(push_dir(&args[i], &values.dir));
+        if x.is_err() {
+            result.push(Err(format!("can not create file {}\n", args[i])));
+            result.push(Err(format!("can not create file {}\n", args[i])));
+        }
+    }
+    return result;
+}
+
+fn cat(values: &mut Values) -> Vec<Result<String, String>> {
+    let mut result: Vec<Result<String, String>> = Vec::new();
+    if values.args.is_none() {
+        return vec![Ok(String::new())];
+    }
+    let args = values.args.clone().unwrap();
+    let check = args.len() > 1;
+    let mut s = String::new();
+    for arg in args {
+        match dir_exists(&push_dir(&arg, &values.dir)) {
+            -1 => {
+                result.push(Err(format!(
+                    "cannot access {}: No such file or directory\n",
+                    arg
+                )));
+                continue;
+            }
+            1 => {
+                result.push(Err(format!("cannot read {} is a directory\n", arg)));
+                continue;
+            }
+            _ => {}
+        }
+        if check {
+            s += &format!("{}:\n", arg);
+        }
+        let dir_ = push_dir(&arg, &values.dir);
+        let mut file = File::open(dir_).unwrap();
+        let mut contents = String::new();
+
+        let handler = file.read_to_string(&mut contents);
+        if handler.is_err() {
+            result.push(Err(format!("failed to read: {}\n", arg)));
+            continue;
+        }
+        s += &contents;
+    }
+    if s.is_empty() {
+        return result;
+    }
+    result.push(Ok(s));
+    return result;
+}
+
+fn mkdir(values: &mut Values) -> Vec<Result<String, String>> {
+    let mut result: Vec<Result<String, String>> = Vec::new();
+    if values.args.is_none() {
+        return vec![Ok(String::new())];
+    }
+    let args = values.args.clone().unwrap();
+    for arg in args {
+        let mut temp = push_dir(&arg, &values.dir);
+        temp.pop();
+        match dir_exists(&temp) {
+            1 => {}
+            _ => {
+                result.push(Err(format!(
+                    "directory {} does not exist\n",
+                    temp.to_string_lossy()
+                )));
+                continue;
+            }
+        }
+        let dir_ = push_dir(&arg, &values.dir);
+        let handler = fs::create_dir(dir_);
+        if handler.is_err() {
+            result.push(Err(format!("failed to create: {}\n", arg)));
+            continue;
+        }
+    }
+    return result;
 }

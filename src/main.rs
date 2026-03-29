@@ -1,8 +1,7 @@
+use ctrlc;
 use std::collections::HashMap;
-use std::env;
-use std::io;
 use std::path::PathBuf;
-
+use std::{env, io};
 mod commands;
 pub mod parsing;
 
@@ -77,48 +76,54 @@ fn tokenizer(s: &str) -> Vec<&str> {
     }
 }
 
+fn main_loop(values: &mut Values, s: String) {
+    let t: Vec<&str> = tokenizer(s.trim());
+    if t.is_empty() {
+        return;
+    }
+    if t.len() > 1 {
+        match parsing::parse_arg(t[1], &values.vars) {
+            Ok(x) => {
+                values.args = Some(x);
+                ()
+            }
+            Err(err) => {
+                eprintln!("{}: {}", t[0], err);
+                return;
+            }
+        }
+    } else {
+        values.args = None;
+    }
+    let command = commands::search(&t[0]);
+    if command.is_none() {
+        eprintln!("Unknown command: {}", t[0]);
+        return;
+    }
+    let result = command.unwrap().run(values);
+    for r in result {
+        match r {
+            Ok(x) => print!("{}", x),
+            Err(x) => eprint!("{}: {}", t[0], x),
+        }
+    }
+    values.args = None;
+    env::set_current_dir(&values.dir).expect("Invalid location");
+}
+
 fn main() {
     let mut values: Values = Values {
         dir: env::current_dir().unwrap(),
         args: None,
         vars: HashMap::new(),
     };
+    let _ = ctrlc::set_handler(move || {});
     loop {
         print!("{} $ ", values.dir.to_string_lossy());
         let s = input();
         if s == "\n" {
             continue;
         }
-        let t: Vec<&str> = tokenizer(s.trim());
-        if t.is_empty() {
-            continue;
-        }
-        let command = commands::search(&t);
-        if command.is_none() {
-            eprintln!("Unknown command: {}", t[0]);
-            continue;
-        }
-        if t.len() > 1 {
-            match parsing::parse_arg(t[1], &values.vars) {
-                Ok(x) => {
-                    values.args = Some(x);
-                    ()
-                }
-                Err(err) => {
-                    eprintln!("{}: {}", t[0], err);
-                    continue;
-                }
-            }
-        } else {
-            values.args = None;
-        }
-        let result = command.unwrap().run(&mut values);
-        for r in result {
-            match r {
-                Ok(x) => print!("{}", x),
-                Err(x) => eprint!("{}: {}", t[0], x),
-            }
-        }
-        values.args = None;
+        main_loop(&mut values, s);
     }
 }
