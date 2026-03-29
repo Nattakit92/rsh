@@ -17,3 +17,17 @@ RSH is a simple shell written in rust, build for educational purpose. My goal is
 | arithmetic | ✅ Done |
 | external commands | ✅ Done |
 | comparisons | 🟨 Inprogress |
+
+## Building from source
+
+```
+# clone & open this repo
+git clone https://github.com/Nattakit92/rsh.git && cd rsh
+
+# build the from source
+cargo build --release
+
+# run rsh
+./target/release/rsh
+
+```
