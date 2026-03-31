@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{env, io};
 mod commands;
-pub mod parsing;
+pub mod evaluate;
+mod parsing;
 
 #[derive(Clone)]
 pub enum VarTypes {
@@ -76,20 +77,18 @@ fn tokenizer(s: &str) -> Vec<&str> {
     }
 }
 
-fn main_loop(values: &mut Values, s: String) {
-    let t: Vec<&str> = tokenizer(s.trim());
+fn main_loop(values: &mut Values, t: &Vec<&str>) -> Vec<Result<String, String>> {
     if t.is_empty() {
-        return;
+        return vec![];
     }
     if t.len() > 1 {
-        match parsing::parse_arg(t[1], &values.vars) {
+        match parsing::parse_arg(t[1], values) {
             Ok(x) => {
                 values.args = Some(x);
                 ()
             }
             Err(err) => {
-                eprintln!("{}: {}", t[0], err);
-                return;
+                return vec![Err(format!("{}: {}", t[0], err))];
             }
         }
     } else {
@@ -97,18 +96,9 @@ fn main_loop(values: &mut Values, s: String) {
     }
     let command = commands::search(&t[0]);
     if command.is_none() {
-        eprintln!("Unknown command: {}", t[0]);
-        return;
+        return vec![Err(format!("Unknown command: {}", t[0]))];
     }
-    let result = command.unwrap().run(values);
-    for r in result {
-        match r {
-            Ok(x) => print!("{}", x),
-            Err(x) => eprint!("{}: {}", t[0], x),
-        }
-    }
-    values.args = None;
-    env::set_current_dir(&values.dir).expect("Invalid location");
+    command.unwrap().run(values)
 }
 
 fn main() {
@@ -124,6 +114,15 @@ fn main() {
         if s == "\n" {
             continue;
         }
-        main_loop(&mut values, s);
+        let t: Vec<&str> = tokenizer(s.trim());
+        let result = main_loop(&mut values, &t);
+        for r in result {
+            match r {
+                Ok(x) => print!("{}", x),
+                Err(x) => eprint!("{}: {}", t[0], x),
+            }
+        }
+        values.args = None;
+        env::set_current_dir(&values.dir).expect("Invalid location");
     }
 }

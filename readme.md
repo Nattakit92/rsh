@@ -16,7 +16,8 @@ RSH is a simple shell written in rust, build for educational purpose. My goal is
 | mkdir | ✅ Done |
 | arithmetic | ✅ Done |
 | external commands | ✅ Done |
-| comparisons | 🟨 Inprogress |
+| comparisons | ✅ Done |
+| command substitution | ✅ Done |
 
 ## Building from source
 
@@ -24,10 +25,16 @@ RSH is a simple shell written in rust, build for educational purpose. My goal is
 # clone & open this repo
 git clone https://github.com/Nattakit92/rsh.git && cd rsh
 
+# try
+cargo run
+
 # build the from source
 cargo build --release
 
+# move rsh to cargo/bin
+mv target/release/rsh $HOME/.cargo/bin
+
 # run rsh
-./target/release/rsh
+rsh
 
 ```

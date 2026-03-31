@@ -20,33 +20,35 @@ pub enum Commands<'a> {
 }
 
 pub fn search<'a>(command: &'a str) -> Option<Commands<'a>> {
+    use Commands::*;
     match command {
-        "exit" => Some(Commands::Exit),
-        "echo" => Some(Commands::Echo),
-        "ls" => Some(Commands::Ls),
-        "cd" => Some(Commands::Cd),
-        "pwd" => Some(Commands::Pwd),
-        "let" => Some(Commands::Let),
-        "touch" => Some(Commands::Touch),
-        "cat" => Some(Commands::Cat),
-        "mkdir" => Some(Commands::Mkdir),
-        _ => Some(Commands::Unknown(command)),
+        "exit" => Some(Exit),
+        "echo" => Some(Echo),
+        "ls" => Some(Ls),
+        "cd" => Some(Cd),
+        "pwd" => Some(Pwd),
+        "let" => Some(Let),
+        "touch" => Some(Touch),
+        "cat" => Some(Cat),
+        "mkdir" => Some(Mkdir),
+        _ => Some(Unknown(command)),
     }
 }
 
 impl<'a> Commands<'a> {
     pub fn run(&self, values: &mut Values) -> Vec<Result<String, String>> {
+        use Commands::*;
         match self {
-            Self::Unknown(command) => try_run(command, values),
-            Self::Exit => exit(),
-            Self::Echo => echo(values),
-            Self::Ls => ls(values),
-            Self::Cd => cd(values),
-            Self::Pwd => pwd(values),
-            Self::Let => let_(values),
-            Self::Touch => touch(values),
-            Self::Cat => cat(values),
-            Self::Mkdir => mkdir(values),
+            Unknown(command) => try_run(command, values),
+            Exit => exit(),
+            Echo => echo(values),
+            Ls => ls(values),
+            Cd => cd(values),
+            Pwd => pwd(values),
+            Let => let_(values),
+            Touch => touch(values),
+            Cat => cat(values),
+            Mkdir => mkdir(values),
         }
     }
 }
