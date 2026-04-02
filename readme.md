@@ -18,6 +18,7 @@ RSH is a simple shell written in rust, build for educational purpose. My goal is
 | external commands | ✅ Done |
 | comparisons | ✅ Done |
 | command substitution | ✅ Done |
+| pipe | ✅ Done |
 
 ## Building from source
 

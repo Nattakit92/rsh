@@ -39,10 +39,13 @@ impl VarTypes {
     }
 }
 
+#[derive(Clone)]
 pub struct Values {
     dir: PathBuf,
     args: Option<Vec<String>>,
     vars: HashMap<String, VarTypes>,
+    pipe: Option<String>,
+    stdout: bool,
 }
 
 pub fn normalise_dir(path: &PathBuf) -> PathBuf {
@@ -70,35 +73,31 @@ fn input() -> String {
     return s;
 }
 
-fn tokenizer(s: &str) -> Vec<&str> {
-    match s.split_once(' ') {
-        Some((a, b)) => return vec![a, b],
-        None => return vec![s],
+fn main_loop(values: &mut Values, s: &str) -> (Vec<Result<String, String>>, Option<String>) {
+    if s.is_empty() {
+        return (vec![], None);
     }
-}
-
-fn main_loop(values: &mut Values, t: &Vec<&str>) -> Vec<Result<String, String>> {
-    if t.is_empty() {
-        return vec![];
-    }
-    if t.len() > 1 {
-        match parsing::parse_arg(t[1], values) {
-            Ok(x) => {
+    let args = parsing::parse_arg(s, values);
+    let c: String;
+    match args {
+        Ok(mut x) => {
+            c = x.remove(0);
+            if x.is_empty() {
+                values.args = None;
+            } else {
                 values.args = Some(x);
-                ()
-            }
-            Err(err) => {
-                return vec![Err(format!("{}: {}", t[0], err))];
             }
         }
-    } else {
-        values.args = None;
+        Err(err) => {
+            return (vec![Err(format!("{}", err))], None);
+        }
     }
-    let command = commands::search(&t[0]);
-    if command.is_none() {
-        return vec![Err(format!("Unknown command: {}", t[0]))];
+
+    let command = commands::search(&c);
+    match command {
+        Some(x) => (x.run(values), Some(c)),
+        None => (vec![Err(format!("Unknown command: {}", c))], None),
     }
-    command.unwrap().run(values)
 }
 
 fn main() {
@@ -106,20 +105,26 @@ fn main() {
         dir: env::current_dir().unwrap(),
         args: None,
         vars: HashMap::new(),
+        pipe: None,
+        stdout: true,
     };
     let _ = ctrlc::set_handler(move || {});
     loop {
+        io::Write::flush(&mut io::stdout()).expect("flush failed!");
         print!("{} $ ", values.dir.to_string_lossy());
         let s = input();
         if s == "\n" {
             continue;
         }
-        let t: Vec<&str> = tokenizer(s.trim());
-        let result = main_loop(&mut values, &t);
+        let (result, command) = main_loop(&mut values, s.trim());
+
         for r in result {
             match r {
                 Ok(x) => print!("{}", x),
-                Err(x) => eprint!("{}: {}", t[0], x),
+                Err(x) => match command {
+                    None => eprint!("{}", x),
+                    Some(_) => eprint!("{}: {}", command.clone().unwrap(), x),
+                },
             }
         }
         values.args = None;

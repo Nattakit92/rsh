@@ -1,5 +1,6 @@
+use crate::commands;
 use crate::evaluate::{compare, evaluate};
-use crate::{Values, main_loop, tokenizer};
+use crate::{Values, main_loop};
 
 enum State {
     Normal,
@@ -9,9 +10,12 @@ enum State {
     CurlyBracket(Box<State>),
     SquareBracket(Box<State>),
     Bracket(Box<State>),
+    Pipe,
+    And,
+    OutRedirect,
 }
 
-pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, &'static str> {
+pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
     use State::*;
     let mut s_ = String::from(s);
     let mut result = Vec::new();
@@ -47,10 +51,17 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, &'static s
                 Normal => {
                     match c {
                         ' ' => {
+                            if slice == String::new() {
+                                continue;
+                            }
                             result.push(slice.clone());
+                            slice = String::new();
                         }
                         '\'' => state = Singlequote,
                         '\"' => state = Doublequote,
+                        '|' => state = Pipe,
+                        '&' => state = And,
+                        '>' => state = OutRedirect,
                         _ => slice.push(c),
                     };
                 }
@@ -101,12 +112,11 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, &'static s
                 },
                 Bracket(x) => match c {
                     ')' => {
-                        let t = tokenizer(temp.trim());
-                        let result = main_loop(values, &t);
+                        let (result, _) = main_loop(values, temp.trim());
                         for r in result {
                             match r {
                                 Ok(x) => slice += &x,
-                                Err(x) => return Err(Box::leak(x.into_boxed_str())),
+                                Err(x) => return Err(x),
                             }
                         }
                         state = *x;
@@ -114,6 +124,83 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, &'static s
                     _ => {
                         temp.push(c);
                         state = Bracket(Box::from(*x));
+                    }
+                },
+                Pipe => {
+                    let stdin = run(&slice, values, &mut result);
+                    for r in stdin {
+                        match r {
+                            Ok(x) => values.pipe = Some(x),
+                            Err(x) => return Err(x),
+                        }
+                    }
+                    values.args = None;
+                    state = Normal;
+                    slice = String::new();
+                    result = Vec::new();
+                    values.stdout = true;
+                }
+                And => match c {
+                    '&' => {
+                        let stdout = run(&slice, values, &mut result);
+                        for r in stdout {
+                            match r {
+                                Ok(x) => print!("{}", x),
+                                Err(x) => return Err(x),
+                            }
+                        }
+                        values.args = None;
+                        state = Normal;
+                        slice = String::new();
+                        result = Vec::new();
+                    }
+                    _ => {
+                        let mut values_ = values.clone();
+                        values.stdout = false;
+                        std::thread::spawn(move || {
+                            let stdout = run(&slice, &mut values_, &mut result);
+                            for r in stdout {
+                                match r {
+                                    Ok(x) => println!("{}", x),
+                                    Err(x) => eprintln!("{}", x),
+                                }
+                            }
+                        });
+                        values.args = None;
+                        state = Normal;
+                        slice = String::new();
+                        result = Vec::new();
+                        values.stdout = true;
+                    }
+                },
+                OutRedirect => match c {
+                    '>' => {
+                        let stdout = run(&slice, values, &mut result);
+                        result = vec![String::from("write"), String::from("-a")];
+                        for r in stdout {
+                            match r {
+                                Ok(x) => values.pipe = Some(x),
+                                Err(x) => return Err(format!("{}", x)),
+                            }
+                        }
+                        values.args = None;
+                        state = Normal;
+                        slice = String::new();
+                        values.stdout = true;
+                    }
+                    _ => {
+                        let stdout = run(&slice, values, &mut result);
+                        result = vec![String::from("write")];
+                        for r in stdout {
+                            match r {
+                                Ok(x) => values.pipe = Some(x),
+                                Err(x) => return Err(format!("{}", x)),
+                            }
+                        }
+                        values.args = None;
+                        state = Normal;
+                        slice = String::new();
+                        values.stdout = true;
                     }
                 },
             }
@@ -124,13 +211,44 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, &'static s
                 print!("> ");
                 s_ = crate::input();
             }
-            CurlyBracket(_) => return Err("curly brace opened but never closed: expected }"),
-            SquareBracket(_) => return Err("square bracket opened but never closed: expected ]"),
-            Bracket(_) => return Err("square bracket opened but never closed: expected )"),
+            CurlyBracket(_) => {
+                return Err(format!(
+                    "curly brace opened but never closed: expected }}\n"
+                ));
+            }
+            SquareBracket(_) => {
+                return Err(format!(
+                    "square bracket opened but never closed: expected ]\n"
+                ));
+            }
+            Bracket(_) => {
+                return Err(format!(
+                    "square bracket opened but never closed: expected )\n"
+                ));
+            }
             _ => {}
         }
     }
     slice.pop();
     result.push(slice.clone());
     return Ok(result);
+}
+
+fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> Vec<Result<String, String>> {
+    let t;
+    let result_ = result.clone();
+    if result.len() == 0 {
+        t = slice;
+    } else {
+        t = &result_[0];
+        result.remove(0);
+    }
+    let command = commands::search(&t);
+    if command.is_none() {
+        return vec![Err(format!("Unknown command: {}", t))];
+    }
+    if !result.is_empty() {
+        values.args = Some(result.clone());
+    }
+    command.unwrap().run(values)
 }

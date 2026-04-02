@@ -2,9 +2,9 @@ use crate::normalise_dir;
 use crate::{Values, VarTypes};
 use std::env;
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::process::{self, Command};
+use std::process::{self, Command, Stdio};
 
 pub enum Commands<'a> {
     Unknown(&'a str),
@@ -17,6 +17,7 @@ pub enum Commands<'a> {
     Touch,
     Cat,
     Mkdir,
+    Write,
 }
 
 pub fn search<'a>(command: &'a str) -> Option<Commands<'a>> {
@@ -31,6 +32,7 @@ pub fn search<'a>(command: &'a str) -> Option<Commands<'a>> {
         "touch" => Some(Touch),
         "cat" => Some(Cat),
         "mkdir" => Some(Mkdir),
+        "write" => Some(Write),
         _ => Some(Unknown(command)),
     }
 }
@@ -49,21 +51,36 @@ impl<'a> Commands<'a> {
             Touch => touch(values),
             Cat => cat(values),
             Mkdir => mkdir(values),
+            Write => write(values),
         }
     }
 }
 
 fn try_run(command: &str, values: &mut Values) -> Vec<Result<String, String>> {
+    if command == "" {
+        return vec![Ok(String::new())];
+    }
     let mut c = Command::new(command);
     let result;
-    if values.args.is_none() {
-        result = c.spawn();
-    } else {
+    if !values.args.is_none() {
         let args = values.args.clone().unwrap();
-        result = c.args(args).spawn();
+        c.args(args);
     }
+    if !values.pipe.is_none() {
+        c.stdin(Stdio::piped());
+    }
+    if !values.stdout {
+        c.stdout(Stdio::piped());
+    }
+    result = c.spawn();
     match result {
         Ok(mut s) => {
+            if !values.pipe.is_none() {
+                let mut stdin = s.stdin.take().unwrap();
+                stdin
+                    .write_all(values.pipe.clone().unwrap().as_bytes())
+                    .unwrap();
+            }
             let mut x = String::new();
             s.wait().expect("Cannot run command");
             if s.stdout.is_none() {
@@ -238,16 +255,10 @@ fn let_(values: &mut Values) -> Vec<Result<String, String>> {
     }
 
     match var_val.parse::<i32>() {
-        Ok(x) => {
-            values.vars.insert(var_name, VarTypes::I(x));
-            return vec![Ok(String::new())];
-        }
-
-        Err(_) => {
-            values.vars.insert(var_name, VarTypes::S(var_val));
-            return vec![Ok(String::new())];
-        }
+        Ok(x) => _ = values.vars.insert(var_name, VarTypes::I(x)),
+        Err(_) => _ = values.vars.insert(var_name, VarTypes::S(var_val)),
     }
+    return vec![Ok(String::new())];
 }
 
 fn touch(values: &mut Values) -> Vec<Result<String, String>> {
@@ -335,6 +346,63 @@ fn mkdir(values: &mut Values) -> Vec<Result<String, String>> {
             result.push(Err(format!("failed to create: {}\n", arg)));
             continue;
         }
+    }
+    return result;
+}
+
+fn write(values: &mut Values) -> Vec<Result<String, String>> {
+    if values.args.is_none() {
+        return vec![Ok(String::new())];
+    }
+    let args = values.args.clone().unwrap();
+    if values.pipe.is_none() {
+        return vec![Err(String::from("cannot write"))];
+    }
+    if args.len() == 1 {
+        let dir_ = push_dir(&args[0], &values.dir);
+        match dir_exists(&dir_) {
+            0 => {}
+            _ => {
+                return vec![Err(format!(
+                    "cannot access {}: No such file or directory\n",
+                    args[0]
+                ))];
+            }
+        }
+        let mut file = File::create(dir_).unwrap();
+        _ = file.write_all(values.pipe.clone().unwrap().as_bytes());
+        return vec![Ok(String::new())];
+    }
+    let mut result: Vec<Result<String, String>> = Vec::new();
+    let mut flaged = false;
+    for arg in args {
+        if arg.as_bytes()[0] == b'-' {
+            flaged = true;
+            continue;
+        }
+        let dir_ = push_dir(&arg, &values.dir);
+        match dir_exists(&dir_) {
+            0 => {}
+            _ => {
+                result.push(Err(format!(
+                    "cannot access {}: No such file or directory\n",
+                    arg
+                )));
+            }
+        }
+        let mut data = values.pipe.clone().unwrap();
+        if flaged {
+            let mut file = File::open(dir_.clone()).unwrap();
+            let mut contents = String::new();
+            let handler = file.read_to_string(&mut contents);
+            if handler.is_err() {
+                result.push(Err(format!("failed to read: {}\n", arg)));
+                continue;
+            }
+            data += &contents;
+        }
+        let mut file = File::create(dir_).unwrap();
+        _ = file.write_all(data.as_bytes());
     }
     return result;
 }
