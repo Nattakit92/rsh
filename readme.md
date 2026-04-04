@@ -50,7 +50,6 @@ To use rsh simply open the terminal and run `rsh`
 
 ## Troubleshooting
 > Unknown command: rsh
-try:
 
 Check if bin directory exist
 ```
