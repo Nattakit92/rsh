@@ -1,10 +1,12 @@
-use ctrlc;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{env, io};
+
 mod commands;
-pub mod evaluate;
 mod parsing;
+
+pub mod evaluate;
+pub mod input;
 
 #[derive(Clone)]
 pub enum VarTypes {
@@ -63,16 +65,6 @@ pub fn normalise_dir(path: &PathBuf) -> PathBuf {
     return dir;
 }
 
-fn input() -> String {
-    io::Write::flush(&mut io::stdout()).expect("flush failed!");
-    let mut s = String::new();
-    match io::stdin().read_line(&mut s) {
-        Ok(_) => (),
-        Err(err) => eprintln!("{}", err),
-    };
-    return s;
-}
-
 fn main_loop(values: &mut Values, s: &str) -> (Vec<Result<String, String>>, Option<String>) {
     if s.is_empty() {
         return (vec![], None);
@@ -108,11 +100,15 @@ fn main() {
         pipe: None,
         stdout: true,
     };
-    let _ = ctrlc::set_handler(move || {});
+    let mut color = "\x1b[35m";
     loop {
         io::Write::flush(&mut io::stdout()).expect("flush failed!");
-        print!("{} $ ", values.dir.to_string_lossy());
-        let s = input();
+        print!(
+            "\x1b[34m{}\n{}> \x1b[39m",
+            values.dir.to_string_lossy(),
+            color
+        );
+        let s = input::input();
         if s == "\n" {
             continue;
         }
@@ -120,13 +116,20 @@ fn main() {
 
         for r in result {
             match r {
-                Ok(x) => print!("{}", x),
-                Err(x) => match command {
-                    None => eprint!("{}", x),
-                    Some(_) => eprint!("{}: {}", command.clone().unwrap(), x),
-                },
+                Ok(x) => {
+                    print!("{}", x);
+                    color = "\x1b[35m";
+                }
+                Err(x) => {
+                    match command {
+                        None => eprint!("{}", x),
+                        Some(_) => eprint!("{}: {}", command.clone().unwrap(), x),
+                    }
+                    color = "\x1b[31m";
+                }
             }
         }
+        println!();
         values.args = None;
         env::set_current_dir(&values.dir).expect("Invalid location");
     }

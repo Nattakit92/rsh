@@ -72,6 +72,7 @@ fn try_run(command: &str, values: &mut Values) -> Vec<Result<String, String>> {
     if !values.stdout {
         c.stdout(Stdio::piped());
     }
+    c.stderr(Stdio::piped());
     result = c.spawn();
     match result {
         Ok(mut s) => {
@@ -83,6 +84,10 @@ fn try_run(command: &str, values: &mut Values) -> Vec<Result<String, String>> {
             }
             let mut x = String::new();
             s.wait().expect("Cannot run command");
+            if !s.stderr.is_none() {
+                _ = s.stderr.unwrap().read_to_string(&mut x);
+                return vec![Err(x)];
+            }
             if s.stdout.is_none() {
                 return vec![Ok(String::new())];
             }

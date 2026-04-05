@@ -209,7 +209,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
             Normal => break,
             Doublequote | Singlequote => {
                 print!("> ");
-                s_ = crate::input();
+                s_ = crate::input::input();
             }
             CurlyBracket(_) => {
                 return Err(format!(
