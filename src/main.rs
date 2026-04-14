@@ -4,6 +4,7 @@ use std::{env, io};
 
 mod commands;
 mod parsing;
+mod config;
 
 pub mod evaluate;
 pub mod input;
@@ -47,6 +48,7 @@ pub struct Values {
     args: Option<Vec<String>>,
     vars: HashMap<String, VarTypes>,
     pipe: Option<String>,
+    history: Vec<String>,
     stdout: bool,
 }
 
@@ -98,6 +100,7 @@ fn main() {
         args: None,
         vars: HashMap::new(),
         pipe: None,
+        history: Vec::new(),
         stdout: true,
     };
     let mut color = "\x1b[35m";
@@ -108,10 +111,11 @@ fn main() {
             values.dir.to_string_lossy(),
             color
         );
-        let s = input::input();
+        let s = input::input(values.history.clone());
         if s == "\n" {
             continue;
         }
+        values.history.push(s.clone());
         let (result, command) = main_loop(&mut values, s.trim());
 
         for r in result {
@@ -129,7 +133,6 @@ fn main() {
                 }
             }
         }
-        println!();
         values.args = None;
         env::set_current_dir(&values.dir).expect("Invalid location");
     }

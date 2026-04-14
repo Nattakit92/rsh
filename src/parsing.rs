@@ -62,6 +62,20 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         '|' => state = Pipe,
                         '&' => state = And,
                         '>' => state = OutRedirect,
+                        '\n' => {
+                            let stdout = run(&slice, values, &mut result);
+                            for r in stdout {
+                                match r {
+                                    Ok(x) => print!("{}", x),
+                                    Err(x) => return Err(x),
+                                }
+                            }
+                            values.args = None;
+                            state = Normal;
+                            slice = String::new();
+                            result = Vec::new();
+                            continue;
+                        }
                         _ => slice.push(c),
                     };
                 }
@@ -209,7 +223,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
             Normal => break,
             Doublequote | Singlequote => {
                 print!("> ");
-                s_ = crate::input::input();
+                s_ = crate::input::input(values.history.clone());
             }
             CurlyBracket(_) => {
                 return Err(format!(
@@ -242,6 +256,9 @@ fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> Vec<Result
     } else {
         t = &result_[0];
         result.remove(0);
+        if slice != String::new(){
+            result.push(String::from(slice));
+        }
     }
     let command = commands::search(&t);
     if command.is_none() {

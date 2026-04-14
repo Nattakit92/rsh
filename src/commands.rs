@@ -86,7 +86,9 @@ fn try_run(command: &str, values: &mut Values) -> Vec<Result<String, String>> {
             s.wait().expect("Cannot run command");
             if !s.stderr.is_none() {
                 _ = s.stderr.unwrap().read_to_string(&mut x);
-                return vec![Err(x)];
+                if !x.is_empty() {
+                    return vec![Err(x)];
+                }
             }
             if s.stdout.is_none() {
                 return vec![Ok(String::new())];
@@ -119,6 +121,10 @@ fn echo(values: &mut Values) -> Vec<Result<String, String>> {
     return vec![Ok(result)];
 }
 
+///return
+/// - -1 if not exist
+/// - 1 if is dir
+/// - 0 if is file
 fn dir_exists(dir: &PathBuf) -> i32 {
     if !fs::exists(dir).expect(&format!(
         "Can't check existence of file {}",
@@ -365,7 +371,9 @@ fn write(values: &mut Values) -> Vec<Result<String, String>> {
     }
     if args.len() == 1 {
         let dir_ = push_dir(&args[0], &values.dir);
-        match dir_exists(&dir_) {
+        let mut parent = dir_.clone();
+        parent.pop();
+        match dir_exists(&parent) {
             0 => {}
             _ => {
                 return vec![Err(format!(
