@@ -27,12 +27,123 @@ fn raw_switch() {
     _ = tcsetattr(0, TCSANOW, &termios);
 }
 
+#[derive(Clone)]
+struct Buffer{
+    data: Vec<String>,
+    x: usize,
+    y: usize,
+}
+
+impl Buffer{
+    fn new() -> Self{
+        Buffer { data: vec![String::from(String::new())], x: 0, y: 0 }
+    }
+
+    fn insert(&mut self, c: char){
+        self.data[self.y].insert(self.x,c);
+        self.x += 1;
+    }
+
+    fn x_inc(&mut self) -> bool{
+        if self.x < self.data[self.y].len() {
+            self.x += 1;
+            return true;
+        }
+        false
+    }
+
+    fn x_dec(&mut self) -> bool{
+        if self.x > 0 {
+            self.x -= 1;
+            return true;
+        }
+        false
+    }
+
+    fn y_inc(&mut self) -> bool{
+        if self.y < self.data.len() - 1{
+            self.y += 1;
+            self.x = min(self.x, self.data[self.y].len());
+            return true;
+        }
+        false
+    }
+
+    fn y_dec(&mut self) -> bool{
+        if self.y > 0{
+            self.y -= 1;
+            self.x = min(self.x, self.data[self.y].len());
+            return true;
+        }
+        false
+    }
+
+    fn get_char(&mut self) -> char{
+        if self.x == 0{
+            return '\0';
+        }
+        self.data[self.y].chars().nth(self.x-1).unwrap()
+    }
+
+    fn remove(&mut self) -> bool{
+        if self.x_dec() {
+            self.data[self.y].remove(self.x);
+            return true;
+        }
+        false
+    }
+
+    fn get_line(&self) -> String{
+        self.data[self.y].clone()
+    }
+
+    fn new_line(&mut self){
+        self.data.insert(self.y + 1, String::new());
+        self.y_inc();
+    }
+
+    fn del_line(&mut self){
+        if self.y > 0{
+            self.data.remove(self.y);
+            self.y -= 1;
+            self.x = self.data[self.y].len();
+            print!("\x1b[1A\x1b[{}G", self.x + START);
+        }
+    }
+
+    fn print(&self){
+        for i in 0..self.y{
+            println!("\x1b[{}G{}", START, self.data[i]);
+        }
+        print!("\x1b[{}G{}", START, self.data[self.y]);
+    }
+}
+
+impl From<Buffer> for String{
+    fn from(buf: Buffer) -> String{
+        buf.data.join("\n")
+    }
+}
+
+impl From<String> for Buffer{
+    fn from(s: String) -> Buffer{
+        let mut temp: Vec<String> = vec![String::new()];
+        let mut i = 0;
+        for c in s.chars(){
+            if c == '\n'{
+                temp.push(String::new());
+                i+=1;
+                continue;
+            }
+            temp[i].push(c);
+        }
+        Buffer { data: temp.clone(), y: temp.len()-1 , x: temp[temp.len()-1].len() }
+    }
+}
+
 pub fn input(mut history: Vec<String>) -> String {
-    let mut buffer_: Vec<Vec<char>> = vec![Vec::new()];
-    let mut buffer: Vec<char> = Vec::new();
-    let mut display: String;
-    let mut pos_x = 0;
-    let mut pos_y = 0;
+    let mut buffer = Buffer::new();
+    let mut his_in = history.len();
     history.push(String::new());
     raw_switch();
     print!("\x1b[5 q");
@@ -46,93 +157,91 @@ pub fn input(mut history: Vec<String>) -> String {
         let buf_ = u128::from_be_bytes(buf) >> ((16 - n) * 8);
         match buf_ {
             LEFT => {
-                if pos_x > 0 {
-                    pos_x -= 1;
-                }
-                print!("\x1b[{}G", pos_x + START);
+                buffer.x_dec();
+                print!("\x1b[{}G", buffer.x + START);
                 continue;
             }
             RIGHT => {
-                if pos_x < buffer.len() {
-                    pos_x += 1;
-                }
-                print!("\x1b[{}G", pos_x + START);
+                buffer.x_inc();
+                print!("\x1b[{}G", buffer.x + START);
                 continue;
             }
             UP => {
-                if pos_y > 0{
-                    pos_y -= 1;
-                    buffer = buffer_[pos_y].clone();
-                    pos_x = min(pos_x,buffer.len());
-                    print!("\x1b[1A\x1b[{}G",pos_x + START);
+                if buffer.y_dec(){
+                    print!("\x1b[1A\x1b[{}G", buffer.x + START);
                     continue;
+                }else{
+                    if his_in > 0{
+                        print!("\x1b[0J");
+                        history[his_in] = String::from(buffer);
+                        his_in -= 1;
+                        buffer = Buffer::from(history[his_in].clone());
+                        buffer.print();
+                    }
                 }
             }
             DOWN => {
-                if pos_y < buffer_.len() - 1{
-                    pos_y += 1;
-                    buffer = buffer_[pos_y].clone();
-                    pos_x = min(pos_x,buffer.len());
-                    print!("\x1b[1B\x1b[{}G",pos_x + START);
+                if buffer.y_inc(){
+                    print!("\x1b[1B\x1b[{}G", buffer.x + START);
                     continue;
+                }else{
+                    if his_in < history.len() - 1{
+                        while buffer.y_dec(){
+                            print!("\x1b[1A");
+                        }
+                        print!("\x1b[0J");
+                        history[his_in] = String::from(buffer);
+                        his_in += 1;
+                        buffer = Buffer::from(history[his_in].clone());
+                        buffer.print();
+                    }
                 }
             }
             CTRLLEFT => {
-                while pos_x > 0 {
-                    pos_x -= 1;
-                    if STOPPER.contains(&buffer[pos_x]) {
+                while buffer.x_dec() {
+                    if STOPPER.contains(&buffer.get_char()) {
                         break;
                     }
                 }
-                print!("\x1b[{}G", pos_x + START);
+                print!("\x1b[{}G", buffer.x + START);
                 continue;
             }
             CTRLRIGHT => {
-                while pos_x + 1 < buffer.len() {
-                    pos_x += 1;
-                    if STOPPER.contains(&buffer[pos_x]) {
+                while buffer.x_inc() {
+                    if STOPPER.contains(&buffer.get_char()) {
                         break;
                     }
                 }
-                print!("\x1b[{}G", pos_x + START);
+                print!("\x1b[{}G", buffer.x + START);
                 continue;
             }
             BACKSPACE => {
-                if pos_x > 0 {
-                    pos_x -= 1;
-                    buffer.remove(pos_x);
+                if !buffer.remove(){
+                    buffer.del_line();
                 }
             }
             DELETE => {
-                if pos_x < buffer.len() {
-                    buffer.remove(pos_x);
+                if buffer.x_inc() {
+                    buffer.remove();
                 }
             }
             CTRLBACKSPACE => {
-                if pos_x > 0 {
-                    pos_x -= 1;
-                    buffer.remove(pos_x);
-                }
-                while pos_x > 0 {
-                    pos_x -= 1;
-                    if STOPPER.contains(&buffer[pos_x]) {
+                buffer.remove();
+                while buffer.remove() {
+                    if STOPPER.contains(&buffer.get_char()) {
                         break;
                     }
-                    buffer.remove(pos_x);
-                }
-                if buffer.len() > 0 {
-                    pos_x += 1;
                 }
             }
             CTRLDELETE => {
-                if pos_x < buffer.len() {
-                    buffer.remove(pos_x);
+                if buffer.x_inc() {
+                    buffer.remove();
                 }
-                while pos_x < buffer.len() {
-                    if STOPPER.contains(&buffer[pos_x]) {
+                while buffer.x_inc() {
+                    if STOPPER.contains(&buffer.get_char()) {
                         break;
                     }
-                    buffer.remove(pos_x);
+                    buffer.remove();
                 }
             }
             NEWLINE => {
@@ -141,10 +250,7 @@ pub fn input(mut history: Vec<String>) -> String {
             CTRLC => {}
             SHIFTENTER => {
                 println!();
-                pos_y += 1;
-                buffer_.insert(pos_y, Vec::new());
-                buffer = Vec::new();
-                pos_x = 0;
+                buffer.new_line();
             }
             _ => {
                 let temp = str::from_utf8(&buf).expect("invalid utf8");
@@ -153,24 +259,17 @@ pub fn input(mut history: Vec<String>) -> String {
                     if c.is_control() {
                         continue;
                     }
-                    buffer.insert(pos_x, c);
-                    pos_x += 1;
+                    buffer.insert(c);
                 }
             }
         }
-        buffer_[pos_y] = buffer.clone();
-        display = buffer.iter().collect();
-        print!("\r\x1b[2C\x1b[0K{}", display);
-        print!("\x1b[{}G", pos_x + START);
+
+        print!("\r\x1b[{}C\x1b[0K{}", START - 1, buffer.get_line());
+        print!("\x1b[{}G", buffer.x + START);
     }
-    println!("\x1b[{}B", buffer_.len() - pos_y - 1);
+    for _ in 0..buffer.data.len() - buffer.y{
+        println!();
+    }
     raw_switch();
-    buffer_
-        .iter()
-        .map(|line| {
-            let mut s: String = line.iter().collect();
-            s.push('\n');
-            s
-        })
-        .collect::<Vec<_>>().join("\n")
+    String::from(buffer)
 }

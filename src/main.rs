@@ -112,7 +112,7 @@ fn main() {
             color
         );
         let s = input::input(values.history.clone());
-        if s == "\n" {
+        if s == "\n" || s == String::new() {
             continue;
         }
         values.history.push(s.clone());
