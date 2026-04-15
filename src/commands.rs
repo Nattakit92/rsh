@@ -279,7 +279,11 @@ fn touch(values: &mut Values) -> Vec<Result<String, String>> {
     let args = values.args.clone().unwrap();
     let mut result: Vec<Result<String, String>> = Vec::new();
     for i in 0..args.len() {
-        let x = File::create(push_dir(&args[i], &values.dir));
+        let dir = push_dir(&args[i], &values.dir);
+        if dir_exists(&dir) == 0{
+            continue;
+        }
+        let x = File::create(dir);
         if x.is_err() {
             result.push(Err(format!("can not create file {}\n", args[i])));
             result.push(Err(format!("can not create file {}\n", args[i])));
@@ -374,7 +378,7 @@ fn write(values: &mut Values) -> Vec<Result<String, String>> {
         let mut parent = dir_.clone();
         parent.pop();
         match dir_exists(&parent) {
-            0 => {}
+            1 => {}
             _ => {
                 return vec![Err(format!(
                     "cannot access {}: No such file or directory\n",

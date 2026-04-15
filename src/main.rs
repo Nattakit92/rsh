@@ -2,6 +2,8 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::{env, io};
 
+use crate::config::{get_history, store_history};
+
 mod parsing;
 mod config;
 
@@ -112,6 +114,7 @@ fn main_loop(values: &mut Values, s: &str) -> (Vec<Result<String, String>>, Opti
 fn main() {
     let mut values: Values = Values::new();
     let mut color = "\x1b[35m";
+    values.history = get_history();
     loop {
         io::Write::flush(&mut io::stdout()).expect("flush failed!");
         print!(
@@ -124,6 +127,7 @@ fn main() {
             continue;
         }
         values.history.push_back(s.clone());
+        store_history(values.history.clone());
         if values.history.len() > HISTORYSIZE{
             values.history.pop_front();
         }
