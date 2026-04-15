@@ -100,7 +100,7 @@ fn try_run(command: &str, values: &mut Values) -> Vec<Result<String, String>> {
             vec![Ok(x)]
         }
         Err(_) => {
-            vec![Err(String::from("Unknown command\n"))]
+            vec![Err(format!("Unknown command: {}\n", command))]
         }
     }
 }

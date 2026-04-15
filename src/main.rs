@@ -1,13 +1,15 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::{env, io};
 
-mod commands;
 mod parsing;
 mod config;
 
+pub mod commands;
 pub mod evaluate;
 pub mod input;
+
+const HISTORYSIZE: usize = 500;
 
 #[derive(Clone)]
 pub enum VarTypes {
@@ -48,8 +50,21 @@ pub struct Values {
     args: Option<Vec<String>>,
     vars: HashMap<String, VarTypes>,
     pipe: Option<String>,
-    history: Vec<String>,
+    history: VecDeque<String>,
     stdout: bool,
+}
+
+impl Values {
+    pub fn new() -> Self{
+        Values {
+            dir: env::current_dir().unwrap(),
+            args: None,
+            vars: HashMap::new(),
+            pipe: None,
+            history: VecDeque::new(),
+            stdout: true,
+        }
+    }
 }
 
 pub fn normalise_dir(path: &PathBuf) -> PathBuf {
@@ -95,14 +110,7 @@ fn main_loop(values: &mut Values, s: &str) -> (Vec<Result<String, String>>, Opti
 }
 
 fn main() {
-    let mut values: Values = Values {
-        dir: env::current_dir().unwrap(),
-        args: None,
-        vars: HashMap::new(),
-        pipe: None,
-        history: Vec::new(),
-        stdout: true,
-    };
+    let mut values: Values = Values::new();
     let mut color = "\x1b[35m";
     loop {
         io::Write::flush(&mut io::stdout()).expect("flush failed!");
@@ -115,7 +123,10 @@ fn main() {
         if s == "\n" || s == String::new() {
             continue;
         }
-        values.history.push(s.clone());
+        values.history.push_back(s.clone());
+        if values.history.len() > HISTORYSIZE{
+            values.history.pop_front();
+        }
         let (result, command) = main_loop(&mut values, s.trim());
 
         for r in result {

@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::io::{Read, Write, stdin, stdout};
 use std::cmp::min;
 use termios::*;
@@ -40,7 +41,12 @@ impl Buffer{
     }
 
     fn insert(&mut self, c: char){
-        self.data[self.y].insert(self.x,c);
+        if let Some((i,_)) = self.data[self.y].char_indices().nth(self.x){
+            self.data[self.y].insert(i,c);
+            self.x += 1;
+            return;
+        }
+        self.data[self.y].push(c);
         self.x += 1;
     }
 
@@ -87,7 +93,11 @@ impl Buffer{
 
     fn remove(&mut self) -> bool{
         if self.x_dec() {
-            self.data[self.y].remove(self.x);
+            if let Some((i,_)) = self.data[self.y].char_indices().nth(self.x){
+                self.data[self.y].remove(i);
+                return true;
+            }
+            self.data[self.y].pop();
             return true;
         }
         false
@@ -141,10 +151,10 @@ impl From<String> for Buffer{
     }
 }
 
-pub fn input(mut history: Vec<String>) -> String {
+pub fn input(mut history: VecDeque<String>) -> String {
     let mut buffer = Buffer::new();
     let mut his_in = history.len();
-    history.push(String::new());
+    history.push_back(String::new());
     raw_switch();
     print!("\x1b[5 q");
     loop {
