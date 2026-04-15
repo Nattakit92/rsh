@@ -18,11 +18,23 @@ pub enum Commands<'a> {
     Cat,
     Mkdir,
     Write,
+    Alias
 }
 
-pub fn search<'a>(command: &'a str) -> Option<Commands<'a>> {
+pub fn search<'a>(command: &'a str, values: &mut Values) -> Option<Commands<'a>> {
     use Commands::*;
-    match command {
+    let mut com = command;
+    if values.alias.contains_key(command){
+        com = &values.alias[command][0];
+        if values.alias[command].len() > 1{
+            let mut temp = Vec::from(&values.alias[command][1..]);
+            if let Some(x) = values.args.clone(){
+                temp.extend(x);
+            }
+            values.args = Some(temp);
+        }
+    }
+    match com {
         "exit" => Some(Exit),
         "echo" => Some(Echo),
         "ls" => Some(Ls),
@@ -33,6 +45,7 @@ pub fn search<'a>(command: &'a str) -> Option<Commands<'a>> {
         "cat" => Some(Cat),
         "mkdir" => Some(Mkdir),
         "write" => Some(Write),
+        "alias" => Some(Alias),
         _ => Some(Unknown(command)),
     }
 }
@@ -52,6 +65,7 @@ impl<'a> Commands<'a> {
             Cat => cat(values),
             Mkdir => mkdir(values),
             Write => write(values),
+            Alias => alias(values)
         }
     }
 }
@@ -422,4 +436,44 @@ fn write(values: &mut Values) -> Vec<Result<String, String>> {
         _ = file.write_all(data.as_bytes());
     }
     return result;
+}
+
+fn alias(values: &mut Values) -> Vec<Result<String,String>>{
+    if values.args.is_none() {
+        return vec![Err(String::from("expect alias\n"))];
+    }
+    let args = values.args.clone().unwrap();
+    if args.len() > 1 {
+        return vec![Err(String::from("too many arguments\n"))];
+    }
+    let mut var_name = String::new();
+    let mut var_val: Vec<String> = Vec::new();
+    let mut temp = String::new();
+    let mut found_eq = false;
+    for c in args[0].chars() {
+        if found_eq {
+            if c == ' '{
+                var_val.push(temp);
+                temp = String::new();
+            }else{
+                temp.push(c);
+            }
+            continue;
+        }
+        if c == '=' {
+            found_eq = true;
+            continue;
+        }
+        var_name.push(c);
+    }
+    if var_name.parse::<i32>().is_ok() {
+        return vec![Err(format!("{} is not a valid name", var_name))];
+    }
+    if !found_eq {
+        return vec![Err(String::from("expect value\n"))];
+    }
+    var_val.push(temp);
+    values.alias.insert(var_name, var_val);
+
+    return vec![Ok(String::new())];
 }

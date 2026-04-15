@@ -53,6 +53,7 @@ pub struct Values {
     vars: HashMap<String, VarTypes>,
     pipe: Option<String>,
     history: VecDeque<String>,
+    alias: HashMap<String, Vec<String>>,
     stdout: bool,
 }
 
@@ -64,6 +65,7 @@ impl Values {
             vars: HashMap::new(),
             pipe: None,
             history: VecDeque::new(),
+            alias: HashMap::new(),
             stdout: true,
         }
     }
@@ -104,7 +106,7 @@ fn main_loop(values: &mut Values, s: &str) -> (Vec<Result<String, String>>, Opti
         }
     }
 
-    let command = commands::search(&c);
+    let command = commands::search(&c, values);
     match command {
         Some(x) => (x.run(values), Some(c)),
         None => (vec![Err(format!("Unknown command: {}", c))], None),

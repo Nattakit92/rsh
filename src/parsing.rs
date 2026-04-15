@@ -260,12 +260,12 @@ fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> Vec<Result
             result.push(String::from(slice));
         }
     }
-    let command = commands::search(&t);
-    if command.is_none() {
-        return vec![Err(format!("Unknown command: {}", t))];
-    }
     if !result.is_empty() {
         values.args = Some(result.clone());
+    }
+    let command = commands::search(&t, values);
+    if command.is_none() {
+        return vec![Err(format!("Unknown command: {}", t))];
     }
     command.unwrap().run(values)
 }
