@@ -63,11 +63,11 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         '&' => state = And,
                         '>' => state = OutRedirect,
                         '\n' => {
-                            let stdout = run(&slice, values, &mut result);
+                            let (com, stdout) = run(&slice, values, &mut result);
                             for r in stdout {
                                 match r {
                                     Ok(x) => print!("{}", x),
-                                    Err(x) => return Err(x),
+                                    Err(x) => eprint!("{} {}", com, x),
                                 }
                             }
                             values.args = None;
@@ -141,7 +141,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                     }
                 },
                 Pipe => {
-                    let stdin = run(&slice, values, &mut result);
+                    let (_,stdin) = run(&slice, values, &mut result);
                     for r in stdin {
                         match r {
                             Ok(x) => values.pipe = Some(x),
@@ -156,7 +156,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                 }
                 And => match c {
                     '&' => {
-                        let stdout = run(&slice, values, &mut result);
+                        let (_,stdout) = run(&slice, values, &mut result);
                         for r in stdout {
                             match r {
                                 Ok(x) => print!("{}", x),
@@ -172,11 +172,11 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         let mut values_ = values.clone();
                         values.stdout = false;
                         std::thread::spawn(move || {
-                            let stdout = run(&slice, &mut values_, &mut result);
+                            let (com,stdout) = run(&slice, &mut values_, &mut result);
                             for r in stdout {
                                 match r {
                                     Ok(x) => println!("{}", x),
-                                    Err(x) => eprintln!("{}", x),
+                                    Err(x) => eprintln!("{}: {}", com, x),
                                 }
                             }
                         });
@@ -189,7 +189,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                 },
                 OutRedirect => match c {
                     '>' => {
-                        let stdout = run(&slice, values, &mut result);
+                        let (_,stdout) = run(&slice, values, &mut result);
                         result = vec![String::from("write"), String::from("-a")];
                         for r in stdout {
                             match r {
@@ -203,7 +203,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         values.stdout = true;
                     }
                     _ => {
-                        let stdout = run(&slice, values, &mut result);
+                        let (_,stdout) = run(&slice, values, &mut result);
                         result = vec![String::from("write")];
                         for r in stdout {
                             match r {
@@ -248,7 +248,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
     return Ok(result);
 }
 
-fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> Vec<Result<String, String>> {
+fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> (String, Vec<Result<String, String>>) {
     let t;
     let result_ = result.clone();
     if result.len() == 0 {
@@ -265,7 +265,7 @@ fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> Vec<Result
     }
     let command = commands::search(&t, values);
     if command.is_none() {
-        return vec![Err(format!("Unknown command: {}", t))];
+        return (String::from(t), vec![Err(format!("Unknown command: {}", t))]);
     }
-    command.unwrap().run(values)
+    (String::from(t), command.unwrap().run(values))
 }

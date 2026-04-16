@@ -113,10 +113,48 @@ fn main_loop(values: &mut Values, s: &str) -> (Vec<Result<String, String>>, Opti
     }
 }
 
+fn run_arg(arg: String, values: &mut Values){
+    values.args = Some(vec![arg.clone()]);
+    let cat = commands::search("cat", values);
+    let result = cat.unwrap().run(values)[0].clone();
+    if result.is_err(){
+        eprintln!("rsh: {}",result.err().unwrap());
+        return;
+    }
+    let mut s = result.unwrap();
+
+    s = s.lines().filter(|l| !l.trim().starts_with("#")).collect();
+
+    let (result, command) = main_loop(values, s.trim());
+
+    for r in result {
+        match r {
+            Ok(x) => {
+                print!("{}", x);
+            }
+            Err(x) => {
+                match command {
+                    None => eprint!("{}", x),
+                    Some(_) => eprint!("{}: {}", command.clone().unwrap(), x),
+                }
+            }
+        }
+    }
+    values.args = None;
+}
+
 fn main() {
     let mut values: Values = Values::new();
     let mut color = "\x1b[35m";
     values.history = get_history();
+    let mut args = env::args().into_iter();
+    args.next();
+    for arg in args{
+        run_arg(arg, &mut values);
+    }
+    if env::args().len() > 1 {
+        return;
+    }
     loop {
         io::Write::flush(&mut io::stdout()).expect("flush failed!");
         print!(
