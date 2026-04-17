@@ -125,7 +125,13 @@ pub fn main_loop(values: &mut Values, s: &str) -> (Vec<Result<String, String>>, 
         alias = crate::parsing::parse_arg(&values.alias[&c].clone(), values).unwrap();
         if values.alias[&c].len() > 1 && values.arg_extend{
             let mut temp = Vec::from(&alias[1..]);
-            if let Some(args) = values.args.clone(){
+            let mut args = Vec::new();
+            let mut i = 0;
+            while values.vars.contains_key(&i.to_string()){
+                args.push(values.vars[&i.to_string()].get_s());
+                i += 1;
+            }
+            if !args.is_empty(){
                 temp.extend(args);
             }
             values.args = Some(temp);
