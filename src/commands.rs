@@ -21,20 +21,9 @@ pub enum Commands<'a> {
     Alias
 }
 
-pub fn search<'a>(command: &'a str, values: &mut Values) -> Option<Commands<'a>> {
+pub fn search<'a>(command: &'a str) -> Option<Commands<'a>> {
     use Commands::*;
-    let mut com = command;
-    if values.alias.contains_key(command){
-        com = &values.alias[command][0];
-        if values.alias[command].len() > 1{
-            let mut temp = Vec::from(&values.alias[command][1..]);
-            if let Some(x) = values.args.clone(){
-                temp.extend(x);
-            }
-            values.args = Some(temp);
-        }
-    }
-    match com {
+    match command {
         "exit" => Some(Exit),
         "echo" => Some(Echo),
         "ls" => Some(Ls),
@@ -156,11 +145,11 @@ fn push_dir(arg: &str, dir: &PathBuf) -> PathBuf {
     let mut dir_ = dir.clone();
     let mut arg_ = arg.chars();
     if arg_.next().unwrap() == '~' {
-        dir_.push(PathBuf::from(String::from(format!(
+        dir_.push(PathBuf::from(format!(
             "{}{}",
             env::home_dir().unwrap().to_string_lossy(),
             arg_.as_str()
-        ))));
+        )));
         return dir_;
     }
     dir_.push(PathBuf::from(arg));
@@ -173,9 +162,9 @@ fn cd(values: &mut Values) -> Vec<Result<String, String>> {
     }
     let args = values.args.clone().unwrap();
     if args.len() > 1 {
-        return vec![Err(String::from("too many arguments"))];
+        return vec![Err(String::from("too many arguments\n"))];
     }
-    let arg = &args[0];
+    let arg = &args[0].trim();
     let dir = push_dir(arg, &values.dir);
     match dir_exists(&dir) {
         -1 => {
@@ -447,17 +436,11 @@ fn alias(values: &mut Values) -> Vec<Result<String,String>>{
         return vec![Err(String::from("too many arguments\n"))];
     }
     let mut var_name = String::new();
-    let mut var_val: Vec<String> = Vec::new();
-    let mut temp = String::new();
+    let mut var_val = String::new();
     let mut found_eq = false;
     for c in args[0].chars() {
         if found_eq {
-            if c == ' '{
-                var_val.push(temp);
-                temp = String::new();
-            }else{
-                temp.push(c);
-            }
+            var_val.push(c);
             continue;
         }
         if c == '=' {
@@ -472,7 +455,6 @@ fn alias(values: &mut Values) -> Vec<Result<String,String>>{
     if !found_eq {
         return vec![Err(String::from("expect value\n"))];
     }
-    var_val.push(temp);
     values.alias.insert(var_name, var_val);
 
     return vec![Ok(String::new())];

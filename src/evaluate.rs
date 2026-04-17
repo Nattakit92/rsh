@@ -1,4 +1,4 @@
-use crate::VarTypes;
+use crate::{Values, VarTypes};
 use std::collections::{HashMap, VecDeque};
 
 type Operations = fn(VarTypes, VarTypes) -> VarTypes;
@@ -12,15 +12,18 @@ enum StateCompare {
     Less,
 }
 
-fn find_var(s: &str, vars: &HashMap<String, VarTypes>) -> VarTypes {
+fn find_var(s: &str, values: &mut Values) -> VarTypes {
+    let vars = &values.vars;
+    if vars.contains_key(s) {
+        return vars.get(s).unwrap().clone();
+    }
     match s.parse::<i32>() {
-        Ok(x) => return VarTypes::I(x),
+        Ok(x) => {
+            return VarTypes::I(x)
+        },
         Err(_) => (),
     }
-    if !vars.contains_key(s) {
-        return VarTypes::N;
-    }
-    return vars.get(s).unwrap().clone();
+    VarTypes::N
 }
 
 fn add(var1: VarTypes, var2: VarTypes) -> VarTypes {
@@ -137,7 +140,7 @@ fn lessequal(var1: VarTypes, var2: VarTypes) -> bool {
     var1.get_i() < var2.get_i()
 }
 
-pub fn evaluate(s: &str, vars: &HashMap<String, VarTypes>) -> String {
+pub fn evaluate(s: &str, values: &mut Values) -> String {
     let mut vals: VecDeque<String> = VecDeque::from([String::new()]);
     let mut curr = 0;
     let mut operations: HashMap<char, Operations> = HashMap::new();
@@ -159,21 +162,21 @@ pub fn evaluate(s: &str, vars: &HashMap<String, VarTypes>) -> String {
         return String::new();
     }
     if vals.len() == 1 {
-        return match find_var(s.trim(), vars) {
+        return match find_var(s.trim(), values) {
             VarTypes::I(x) => x.to_string(),
             VarTypes::S(x) => x,
             VarTypes::N => String::new(),
         };
     }
     let temp = String::from(vals.pop_front().unwrap().trim());
-    let mut result = match find_var(&temp, vars) {
+    let mut result = match find_var(&temp, values) {
         VarTypes::N => VarTypes::S(temp),
         x => x,
     };
     while vals.len() > 0 {
         let operant = vals.pop_front().unwrap().chars().next().unwrap();
         let temp = String::from(vals.pop_front().unwrap().trim());
-        let var = match find_var(&temp, vars) {
+        let var = match find_var(&temp, values) {
             VarTypes::N => VarTypes::S(temp),
             x => x,
         };
@@ -186,7 +189,7 @@ pub fn evaluate(s: &str, vars: &HashMap<String, VarTypes>) -> String {
     };
 }
 
-pub fn compare(s: &str, vars: &HashMap<String, VarTypes>) -> char {
+pub fn compare(s: &str, values: &mut Values) -> char {
     use StateCompare::*;
     let mut vals: Vec<VarTypes> = Vec::new();
     let mut val = String::new();
@@ -205,7 +208,7 @@ pub fn compare(s: &str, vars: &HashMap<String, VarTypes>) -> char {
                         continue;
                     }
                 }
-                vals.push(find_var(&val, vars));
+                vals.push(find_var(&val, values));
                 val = String::new();
                 continue;
             }
@@ -251,7 +254,7 @@ pub fn compare(s: &str, vars: &HashMap<String, VarTypes>) -> char {
             }
         }
     }
-    vals.push(find_var(&val, vars));
+    vals.push(find_var(&val, values));
     if vals.len() == 0 {
         return '0';
     }

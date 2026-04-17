@@ -7,15 +7,15 @@ pub fn get_history() -> VecDeque<String>{
     values.dir = env::home_dir().unwrap();
     values.args = Some(vec![String::from(".config"),String::from(".config/rsh")]);
 
-    let mkdir = commands::search("mkdir", &mut values);
+    let mkdir = commands::search("mkdir");
     mkdir.unwrap().run(&mut values);
     values.args = Some(vec![String::from(".config/rsh/history")]);
 
-    let touch = commands::search("touch", &mut values);
+    let touch = commands::search("touch");
     touch.unwrap().run(&mut values);
 
     let mut history: VecDeque<String> = VecDeque::from([String::new()]);
-    let cat = commands::search("cat", &mut values);
+    let cat = commands::search("cat");
     let temp = cat.unwrap().run(&mut values);
 
     if temp.is_empty(){
@@ -31,6 +31,7 @@ pub fn get_history() -> VecDeque<String>{
         }
         history[i].push(c);
     }
+    values.args = None;
     history
 }
 
@@ -39,8 +40,38 @@ pub fn store_history(history: VecDeque<String>){
     values.dir = env::home_dir().unwrap();
     values.args = Some(vec![String::from(".config/rsh/history")]);
 
-    let write = commands::search("write", &mut values);
+    let write = commands::search("write");
     values.pipe = Some(Vec::from(history).join("\t"));
 
     write.unwrap().run(&mut values);
+    values.args = None;
+}
+
+pub fn run_startup(values: &mut Values){
+    values.dir = env::home_dir().unwrap();
+    values.args = Some(vec![String::from(".config/rsh/rsh.rsh")]);
+    let cat = commands::search("cat");
+    let result = cat.unwrap().run(values)[0].clone();
+    values.args = None;
+    if result.is_err(){
+        return;
+    }
+    let mut s = result.unwrap();
+
+    s = s.lines()
+        .filter(|l| !l.trim().starts_with("#"))
+        .map(|l| format!("{}\n", l))
+        .collect();
+
+    let (result, _) = crate::main_loop(values, s.trim());
+
+    for r in result {
+        match r {
+            Ok(x) => {
+                print!("{}", x);
+            }
+            Err(_) => {}
+        }
+    }
+    values.args = None;
 }

@@ -22,7 +22,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
     let mut temp = String::new();
     let mut slice = String::new();
     let mut state: State = Normal;
-    s_.push('\n');
+    s_.push('\0');
     loop {
         for c in s_.chars() {
             match state {
@@ -74,6 +74,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                             state = Normal;
                             slice = String::new();
                             result = Vec::new();
+                            temp = String::new();
                             continue;
                         }
                         _ => slice.push(c),
@@ -99,9 +100,9 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                 CurlyBracket(x) => match c {
                     '}' => {
                         if matches!(*x, CurlyBracket(_)) {
-                            temp = evaluate(&temp, &values.vars);
+                            temp = evaluate(&temp, values);
                         } else {
-                            slice += &evaluate(&temp, &values.vars);
+                            slice += &evaluate(&temp, values);
                         }
                         state = *x;
                     }
@@ -116,7 +117,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                 },
                 SquareBracket(x) => match c {
                     ']' => {
-                        slice.push(compare(&temp, &values.vars));
+                        slice.push(compare(&temp, values));
                         state = *x;
                     }
                     _ => {
@@ -126,6 +127,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                 },
                 Bracket(x) => match c {
                     ')' => {
+                        values.stdout = false;
                         let (result, _) = main_loop(values, temp.trim());
                         for r in result {
                             match r {
@@ -133,6 +135,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                                 Err(x) => return Err(x),
                             }
                         }
+                        values.args = None;
                         state = *x;
                     }
                     _ => {
@@ -141,6 +144,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                     }
                 },
                 Pipe => {
+                    values.stdout = false;
                     let (_,stdin) = run(&slice, values, &mut result);
                     for r in stdin {
                         match r {
@@ -153,9 +157,11 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                     slice = String::new();
                     result = Vec::new();
                     values.stdout = true;
+                    temp = String::new();
                 }
                 And => match c {
                     '&' => {
+                        values.stdout = false;
                         let (_,stdout) = run(&slice, values, &mut result);
                         for r in stdout {
                             match r {
@@ -167,6 +173,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         state = Normal;
                         slice = String::new();
                         result = Vec::new();
+                        temp = String::new();
                     }
                     _ => {
                         let mut values_ = values.clone();
@@ -185,6 +192,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         slice = String::new();
                         result = Vec::new();
                         values.stdout = true;
+                        temp = String::new();
                     }
                 },
                 OutRedirect => match c {
@@ -201,6 +209,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         state = Normal;
                         slice = String::new();
                         values.stdout = true;
+                        temp = String::new();
                     }
                     _ => {
                         let (_,stdout) = run(&slice, values, &mut result);
@@ -215,6 +224,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         state = Normal;
                         slice = String::new();
                         values.stdout = true;
+                        temp = String::new();
                     }
                 },
             }
@@ -249,7 +259,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
 }
 
 fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> (String, Vec<Result<String, String>>) {
-    let t;
+    let mut t;
     let result_ = result.clone();
     if result.len() == 0 {
         t = slice;
@@ -260,10 +270,45 @@ fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> (String, V
             result.push(String::from(slice));
         }
     }
+    let mut args: Vec<String> = Vec::new();
     if !result.is_empty() {
-        values.args = Some(result.clone());
+        args = result.clone();
     }
-    let command = commands::search(&t, values);
+    if values.arg_extend{
+        if values.args.is_some(){
+            args.extend(values.args.clone().unwrap());
+        }
+        values.arg_extend = false;
+    }
+    if args.is_empty(){
+        values.args = None;
+    }else{
+        values.args = Some(args);
+    }
+
+    let alias;
+    if values.alias.contains_key(t){
+        if values.args.is_some(){
+            let args = values.args.clone().unwrap();
+            let mut i = 0;
+            for arg in args{
+                match arg.parse::<i32>() {
+                    Ok(x) => _ = values.vars.insert(i.to_string(), crate::VarTypes::I(x)),
+                    Err(_) => _ = values.vars.insert(i.to_string(), crate::VarTypes::S(arg)),
+                }
+                i += 1;
+            }
+        }
+        alias = crate::parsing::parse_arg(&values.alias[t].clone(), values).unwrap();
+        if values.alias[t].len() > 1{
+            let temp = Vec::from(&alias[1..]);
+            values.args = Some(temp);
+        }
+        t = &alias[0];
+    }
+
+
+    let command = commands::search(&t);
     if command.is_none() {
         return (String::from(t), vec![Err(format!("Unknown command: {}", t))]);
     }
