@@ -274,12 +274,6 @@ fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> (String, V
     if !result.is_empty() {
         args = result.clone();
     }
-    if values.arg_extend{
-        if values.args.is_some(){
-            args.extend(values.args.clone().unwrap());
-        }
-        values.arg_extend = false;
-    }
     if args.is_empty(){
         values.args = None;
     }else{

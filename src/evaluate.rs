@@ -15,6 +15,7 @@ enum StateCompare {
 fn find_var(s: &str, values: &mut Values) -> VarTypes {
     let vars = &values.vars;
     if vars.contains_key(s) {
+        values.arg_extend = false;
         return vars.get(s).unwrap().clone();
     }
     match s.parse::<i32>() {
