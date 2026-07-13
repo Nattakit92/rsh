@@ -59,6 +59,31 @@ impl<'a> Commands<'a> {
     }
 }
 
+fn execute(mut s: process::Child, values: &mut Values) -> Vec<Result<String, String>> {
+    if !values.pipe.is_none() {
+        let mut stdin = s.stdin.take().unwrap();
+        stdin
+            .write_all(values.pipe.clone().unwrap().as_bytes())
+            .unwrap();
+    }
+    let mut x = String::new();
+    s.wait().expect("Cannot run command");
+    if !s.stderr.is_none() {
+        _ = s.stderr.unwrap().read_to_string(&mut x);
+        if !x.is_empty() {
+            return vec![Err(x)];
+        }
+    }
+    if s.stdout.is_none() {
+        return vec![Ok(String::new())];
+    }
+    s.stdout
+        .unwrap()
+        .read_to_string(&mut x)
+        .expect("Cannot open file");
+    return vec![Ok(x)]
+}
+
 fn try_run(command: &str, values: &mut Values) -> Vec<Result<String, String>> {
     if command == "" {
         return vec![Ok(String::new())];
@@ -78,32 +103,22 @@ fn try_run(command: &str, values: &mut Values) -> Vec<Result<String, String>> {
     c.stderr(Stdio::piped());
     result = c.spawn();
     match result {
-        Ok(mut s) => {
-            if !values.pipe.is_none() {
-                let mut stdin = s.stdin.take().unwrap();
-                stdin
-                    .write_all(values.pipe.clone().unwrap().as_bytes())
-                    .unwrap();
-            }
-            let mut x = String::new();
-            s.wait().expect("Cannot run command");
-            if !s.stderr.is_none() {
-                _ = s.stderr.unwrap().read_to_string(&mut x);
-                if !x.is_empty() {
-                    return vec![Err(x)];
-                }
-            }
-            if s.stdout.is_none() {
-                return vec![Ok(String::new())];
-            }
-            s.stdout
-                .unwrap()
-                .read_to_string(&mut x)
-                .expect("Cannot open file");
-            vec![Ok(x)]
+        Ok(s) => {
+            return execute(s,values);
         }
         Err(_) => {
-            vec![Err(format!("Unknown command: {}\n", command))]
+            let temp = push_dir(command, &values.dir);
+            if dir_exists(&temp) == 0 {
+                let mut exec = Command::new(temp);
+                let exec_result = exec.spawn();
+                match exec_result {
+                    Ok(s) => {
+                        return execute(s,values);
+                    },
+                    Err(_) => return vec![Err(format!("Not an executable\n"))],
+                }
+            }
+            vec![Err(format!("Unknown command\n"))]
         }
     }
 }

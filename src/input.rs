@@ -156,6 +156,7 @@ pub fn input(mut history: VecDeque<String>) -> String {
     let mut his_in = history.len();
     history.push_back(String::new());
     raw_switch();
+
     print!("\x1b[5 q");
     loop {
         stdout().flush().expect("flush failed");

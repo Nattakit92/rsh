@@ -226,7 +226,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                         values.stdout = true;
                         temp = String::new();
                     }
-                },
+                }
             }
         }
         match state {
