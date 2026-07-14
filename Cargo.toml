@@ -1,7 +1,10 @@
 [package]
 name = "rsh"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+description = "RSH is a simple shell written in rust, build for educational purpose. My goal is to learn more about rust and how interpreters work under the hood."
+repository = "https://github.com/Nattakit92/rsh"
+readme = "readme.md"
 
 [dependencies]
 termios = "0.3.3"
