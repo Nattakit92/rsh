@@ -1,6 +1,6 @@
 [package]
 name = "rshl"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 license = "GPL-2.0-only"
 description = "A simple shell written in rust, build for educational purpose. My goal is to learn more about rust and how interpreters work under the hood."

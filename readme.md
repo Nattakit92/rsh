@@ -35,7 +35,9 @@ rustc --version
 
 ### Install through cargo
 
-> cargo install rshl
+```
+cargo install rshl
+```
 
 ### Manual installed
 
