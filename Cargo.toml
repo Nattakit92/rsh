@@ -2,7 +2,7 @@
 name = "rsh"
 version = "0.2.0"
 edition = "2024"
-license = "gpl-2.0"
+license = "GPL-2.0-only"
 description = "RSH is a simple shell written in rust, build for educational purpose. My goal is to learn more about rust and how interpreters work under the hood."
 repository = "https://github.com/Nattakit92/rsh"
 readme = "readme.md"
