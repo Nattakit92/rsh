@@ -26,12 +26,16 @@ RSH is a simple shell written in rust, build for educational purpose. My goal is
 - [ ] command/filename/argument completion
 
  
-## Building from source
+## Installation Guide
 
 Make sure you have rust installed.
 ```
 rustc --version
 ```
+
+### Install through cargo
+
+> cargo install rshl
 
 ### Manual installed
 
