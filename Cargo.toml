@@ -1,5 +1,5 @@
 [package]
-name = "rshl"
+name = "rsh-crate"
 version = "0.2.2"
 edition = "2024"
 license = "GPL-2.0-only"
