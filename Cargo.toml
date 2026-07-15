@@ -7,5 +7,9 @@ description = "A simple shell written in rust, build for educational purpose. My
 repository = "https://github.com/Nattakit92/rsh"
 readme = "readme.md"
 
+[[bin]]
+name = "rsh"
+path = "src/main.rs"
+
 [dependencies]
 termios = "0.3.3"
