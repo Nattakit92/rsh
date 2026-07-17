@@ -283,6 +283,11 @@ fn let_(values: &mut Values) -> Vec<Result<String, String>> {
         return vec![Ok(String::new())];
     }
 
+    if var_val.parse::<bool>().is_ok() {
+        values.vars.insert(var_name, VarTypes::B(var_val.parse::<bool>().unwrap()));
+        return vec![Ok(String::new())];
+    }
+
     match var_val.parse::<i32>() {
         Ok(x) => _ = values.vars.insert(var_name, VarTypes::I(x)),
         Err(_) => _ = values.vars.insert(var_name, VarTypes::S(var_val)),
@@ -472,5 +477,12 @@ fn alias(values: &mut Values) -> Vec<Result<String,String>>{
     }
     values.alias.insert(var_name, var_val);
 
+    return vec![Ok(String::new())];
+}
+
+fn if_(values: &mut Values) -> Vec<Result<String,String>>{
+    if values.args.is_none(){
+
+    }
     return vec![Ok(String::new())];
 }

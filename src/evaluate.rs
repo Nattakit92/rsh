@@ -166,6 +166,7 @@ pub fn evaluate(s: &str, values: &mut Values) -> String {
         return match find_var(s.trim(), values) {
             VarTypes::I(x) => x.to_string(),
             VarTypes::S(x) => x,
+            VarTypes::B(x) => x.to_string(),
             VarTypes::N => String::new(),
         };
     }
@@ -186,11 +187,12 @@ pub fn evaluate(s: &str, values: &mut Values) -> String {
     return match result {
         VarTypes::I(x) => x.to_string(),
         VarTypes::S(x) => x,
+        VarTypes::B(x) => x.to_string(),
         VarTypes::N => String::new(),
     };
 }
 
-pub fn compare(s: &str, values: &mut Values) -> char {
+pub fn compare(s: &str, values: &mut Values) -> String {
     use StateCompare::*;
     let mut vals: Vec<VarTypes> = Vec::new();
     let mut val = String::new();
@@ -257,18 +259,18 @@ pub fn compare(s: &str, values: &mut Values) -> char {
     }
     vals.push(find_var(&val, values));
     if vals.len() == 0 {
-        return '0';
+        return String::from("false");
     }
     if vals.len() == 1 {
         if vals[0].get_type() == 'I' {
             if vals[0].get_i() == 0 {
-                return '0';
+                return String::from("false");
             }
         }
-        return '1';
+        return String::from("true");
     }
     if comparision(vals[0].clone(), vals[1].clone()) {
-        return '1';
+        return String::from("true");
     }
-    return '0';
+    return String::from("false");
 }

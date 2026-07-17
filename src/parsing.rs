@@ -117,7 +117,7 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
                 },
                 SquareBracket(x) => match c {
                     ']' => {
-                        slice.push(compare(&temp, values));
+                        slice = slice + &compare(&temp, values);
                         state = *x;
                     }
                     _ => {

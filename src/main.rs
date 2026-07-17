@@ -20,6 +20,8 @@ pub enum VarTypes {
     I(i32),
     ///string type
     S(String),
+    /// bool type
+    B(bool),
     /// none type
     N,
 }
@@ -35,6 +37,7 @@ impl VarTypes {
         match self {
             Self::I(x) => x.to_string(),
             Self::S(x) => x.clone(),
+            Self::B(x) => x.to_string(),
             Self::N => String::new(),
         }
     }
@@ -42,6 +45,7 @@ impl VarTypes {
         match self {
             Self::I(_) => 'I',
             Self::S(_) => 'S',
+            Self::B(_) => 'B',
             Self::N => 'N',
         }
     }
