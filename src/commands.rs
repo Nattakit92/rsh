@@ -1,6 +1,6 @@
 use crate::normalise_dir;
 use crate::{Values, VarTypes};
-use std::env;
+use std::{env, vec};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -482,7 +482,8 @@ fn alias(values: &mut Values) -> Vec<Result<String,String>>{
 
 fn if_(values: &mut Values) -> Vec<Result<String,String>>{
     if values.args.is_none(){
-
+        return vec![Err(String::from("expect argument"))];
     }
+
     return vec![Ok(String::new())];
 }

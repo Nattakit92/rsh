@@ -14,7 +14,7 @@ pub mod input;
 
 const HISTORYSIZE: usize = 500;
 
-#[derive(Clone)]
+#[derive(Clone,PartialEq)]
 pub enum VarTypes {
     ///int type
     I(i32),
@@ -27,6 +27,24 @@ pub enum VarTypes {
 }
 
 impl VarTypes {
+    pub fn set_i(val: String) -> VarTypes {
+        Self::I(val.parse::<i32>().unwrap())
+    }
+    pub fn set_s(val: String) -> VarTypes {
+        Self::S(val)
+    }
+    pub fn set_b(val: String) -> VarTypes {
+        Self::B(val.parse::<bool>().unwrap())
+    }
+    pub fn get_type(val: String) -> VarTypes {
+        if val.parse::<i32>().is_ok() {
+            return Self::I(0);
+        }
+        if val.parse::<bool>().is_ok(){
+            return Self::B(false);
+        }
+        Self::S(val)
+    }
     pub fn get_i(&self) -> i32 {
         if let Self::I(i) = self {
             return *i;
@@ -39,14 +57,6 @@ impl VarTypes {
             Self::S(x) => x.clone(),
             Self::B(x) => x.to_string(),
             Self::N => String::new(),
-        }
-    }
-    pub fn get_type(&self) -> char {
-        match self {
-            Self::I(_) => 'I',
-            Self::S(_) => 'S',
-            Self::B(_) => 'B',
-            Self::N => 'N',
         }
     }
 }
