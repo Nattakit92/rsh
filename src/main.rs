@@ -135,8 +135,6 @@ pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, String>> {
         _ => ()
     }
 
-    values.com_q.push_back(String::from(s));
-
     while !values.com_q.is_empty(){
 
         values.cur_com = CmdVals::new();

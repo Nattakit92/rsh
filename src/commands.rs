@@ -18,7 +18,8 @@ pub enum Commands {
     Cat,
     Mkdir,
     Write,
-    Alias
+    Alias,
+    If
 }
 
 pub fn search(command: String) -> Option<Commands> {
@@ -35,6 +36,7 @@ pub fn search(command: String) -> Option<Commands> {
         "mkdir" => Some(Mkdir),
         "write" => Some(Write),
         "alias" => Some(Alias),
+        "if" => Some(If),
         _ => Some(Unknown(command)),
     }
 }
@@ -54,7 +56,8 @@ impl Commands {
             Cat => cat(value),
             Mkdir => mkdir(value),
             Write => write(value),
-            Alias => alias(value)
+            Alias => alias(value),
+            If => if_(value)
         }
     }
 }
@@ -491,7 +494,11 @@ fn if_(value: &mut Values) -> Vec<Result<String,String>>{
     }
     let condition = condition.unwrap();
     if !condition {
-        while value.get_com() != "end"{}
+        while value.com_q.len() > 0{
+            if value.get_com() == "end"{
+                return vec![Ok(String::new())];
+            }
+        }
     }
     return vec![Ok(String::new())];
 }

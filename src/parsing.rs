@@ -17,13 +17,16 @@ enum State {
 
 pub fn parse_commands(s: &str, queue: &mut Values) -> Result<(), String>{
     use State::*;
-    let s_ = String::from(s) + "\0";
+    let s_ = String::from(s);
     let mut line = String::new();
     let mut state: State = Normal;
     for c in s_.chars(){
         match state {
             Normal => match c {
-                '\n' => queue.com_q.push_back(line.clone()),
+                '\n' => {
+                    queue.com_q.push_back(line.clone());
+                    line = String::new();
+                },
                 '\"' => state = Doublequote,
                 '\'' => state = Singlequote,
                 x => line.push(x)
@@ -42,7 +45,7 @@ pub fn parse_commands(s: &str, queue: &mut Values) -> Result<(), String>{
     match state {
         Doublequote => Err(String::from("Doublequote opened but never closed: expected \"\n")),
         Singlequote => Err(String::from("Singlequote opened but never closed: expected \'\n")),
-        _ => Ok(())
+        _ => {queue.com_q.push_back(line.clone());Ok(())}
     }
 }
 
