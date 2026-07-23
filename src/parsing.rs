@@ -59,6 +59,8 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
     let mut temp = String::new();
     let mut slice = String::new();
     let mut state: State = Normal;
+
+    //check for background process
     if s.chars().last().unwrap() == '&'{
         s.pop();
         let mut values_ = values.clone();
@@ -79,6 +81,7 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
         });
         return Ok(Vec::new());
     }
+
     for c in s.chars() {
         match state {
             Normal | Doublequote => match c {

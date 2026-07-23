@@ -343,15 +343,21 @@ fn let_(value: &mut Values) -> Vec<Result<String, ErrType>> {
         return vec![Ok(String::new())];
     }
 
-    if var_val.parse::<bool>().is_ok() {
-        value.vars.insert(var_name, VarTypes::B(var_val.parse::<bool>().unwrap()));
-        return vec![Ok(String::new())];
+    match var_val.parse::<bool>() {
+        Ok(x) => _ = value.vars.insert(var_name.clone(), VarTypes::B(x)),
+        Err(_) => _ = (),
     }
 
     match var_val.parse::<i32>() {
-        Ok(x) => _ = value.vars.insert(var_name, VarTypes::I(x)),
+        Ok(x) => _ = value.vars.insert(var_name.clone(), VarTypes::I(x)),
+        Err(_) => _ = (),
+    }
+
+    match var_val.parse::<f32>() {
+        Ok(x) => _ = value.vars.insert(var_name, VarTypes::F(x)),
         Err(_) => _ = value.vars.insert(var_name, VarTypes::S(var_val)),
     }
+
     vec![Ok(String::new())]
 }
 

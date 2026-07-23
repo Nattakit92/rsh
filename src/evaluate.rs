@@ -24,6 +24,12 @@ fn find_var(s: &str, values: &mut Values) -> VarTypes {
         },
         Err(_) => (),
     }
+    match s.parse::<f32>() {
+        Ok(x) => {
+            return F(x);
+        },
+        Err(_) => (),
+    }
     N
 }
 
@@ -37,41 +43,57 @@ fn add(var1: VarTypes, var2: VarTypes) -> VarTypes {
     if var2 == N {
         return var1;
     }
-    if let I(_) = var1 && let I(_) = var2 {
-        return I(var1.get_i() + var2.get_i());
+    match (var1,var2) {
+        (I(a),I(b)) => I(a + b),
+        (I(a),F(b)) => F(a as f32 + b),
+        (F(a),F(b)) => F(a + b),
+        (F(a),I(b)) => F(a + b as f32),
+        (a,b) => S(a.get_s() + &b.get_s())
     }
-    S(var1.get_s() + &var2.get_s())
 }
 
 fn sub(var1: VarTypes, var2: VarTypes) -> VarTypes {
-    if let I(_) = var1 && let I(_) = var2 {
-        return I(var1.get_i() - var2.get_i());
+    match (var1,var2) {
+        (I(a),I(b)) => I(a - b),
+        (I(a),F(b)) => F(a as f32 - b),
+        (F(a),F(b)) => F(a - b),
+        (F(a),I(b)) => F(a - b as f32),
+        (_,_) => N
     }
-    N
 }
 
 fn divi(var1: VarTypes, var2: VarTypes) -> VarTypes {
-    if let I(_) = var1 && let I(_) = var2 {
-        return I(var1.get_i() / var2.get_i());
+    match var2 {
+        F(0.0) | I(0) => return N,
+        _ => ()
     }
-    N
+    match (var1,var2) {
+        (I(a),I(b)) => I(a / b),
+        (I(a),F(b)) => F(a as f32 / b),
+        (F(a),F(b)) => F(a / b),
+        (F(a),I(b)) => F(a / b as f32),
+        (_,_) => N
+    }
 }
 
 fn mult(var1: VarTypes, var2: VarTypes) -> VarTypes {
-    if let I(_) = var1 && let I(_) = var2 {
-        return I(var1.get_i() * var2.get_i());
+    match (var1,var2) {
+        (I(a),I(b)) => I(a * b),
+        (I(a),F(b)) => F(a as f32 * b),
+        (F(a),F(b)) => F(a * b),
+        (F(a),I(b)) => F(a * b as f32),
+        (_,_) => N
     }
-    N
 }
 
 fn pow(var1: VarTypes, var2: VarTypes) -> VarTypes {
-    if let I(_) = var1 && let I(_) = var2 {
-        if var2.get_i() < 0 {
-            return I(1 / var1.get_i().pow((-var2.get_i()) as u32));
-        }
-        return I(var1.get_i().pow(var2.get_i() as u32));
+    match (var1,var2) {
+        (I(a),I(b)) => I((a as f32).powi(b) as i32),
+        (I(a),F(b)) => F((a as f32).powf(b)),
+        (F(a),F(b)) => F(a.powf(b)),
+        (F(a),I(b)) => F(a.powf(b as f32)),
+        (_,_) => N
     }
-    N
 }
 
 fn equal(var1: VarTypes, var2: VarTypes) -> bool {
@@ -81,11 +103,17 @@ fn equal(var1: VarTypes, var2: VarTypes) -> bool {
     false
 }
 
-fn isint(var1: VarTypes, var2: VarTypes) -> bool {
-    if let I(_) = var1 && let I(_) = var2{
-        return true;
+fn isnum(var1: VarTypes, var2: VarTypes) -> bool {
+    let mut b = true;
+    match var1 {
+        I(_) | F(_) => (),
+        _ => b = false
     }
-    false
+    match var2 {
+        I(_) | F(_) => (),
+        _ => b = false
+    }
+    b
 }
 
 fn inequal(var1: VarTypes, var2: VarTypes) -> bool {
@@ -93,37 +121,37 @@ fn inequal(var1: VarTypes, var2: VarTypes) -> bool {
 }
 
 fn greater(var1: VarTypes, var2: VarTypes) -> bool {
-    if !isint(var1.clone(), var2.clone()) {
-        return false;
+    match (var1,var2) {
+        (I(a),I(b)) => a > b,
+        (I(a),F(b)) => a as f32 > b,
+        (F(a),F(b)) => a > b,
+        (F(a),I(b)) => a > b as f32,
+        (_,_) => false
     }
-    return var1.get_i() > var2.get_i();
 }
 
 fn greaterequal(var1: VarTypes, var2: VarTypes) -> bool {
-    if !isint(var1.clone(), var2.clone()) {
+    if !isnum(var1.clone(), var2.clone()) {
         return false;
     }
     if equal(var1.clone(), var2.clone()) {
         return true;
     }
-    var1.get_i() > var2.get_i()
+    greater(var1, var2)
 }
 
 fn less(var1: VarTypes, var2: VarTypes) -> bool {
-    if !isint(var1.clone(), var2.clone()) {
+    if !isnum(var1.clone(), var2.clone()) {
         return false;
     }
-    return var1.get_i() < var2.get_i();
+    !greaterequal(var1, var2)
 }
 
 fn lessequal(var1: VarTypes, var2: VarTypes) -> bool {
-    if !isint(var1.clone(), var2.clone()) {
+    if !isnum(var1.clone(), var2.clone()) {
         return false;
     }
-    if equal(var1.clone(), var2.clone()) {
-        return true;
-    }
-    var1.get_i() < var2.get_i()
+    !greater(var1, var2)
 }
 
 pub fn evaluate(s: &str, values: &mut Values) -> String {
@@ -150,6 +178,7 @@ pub fn evaluate(s: &str, values: &mut Values) -> String {
     if vals.len() == 1 {
         return match find_var(s.trim(), values) {
             I(x) => x.to_string(),
+            F(x) => x.to_string(),
             S(x) => x,
             B(x) => x.to_string(),
             N => String::new(),
@@ -171,6 +200,7 @@ pub fn evaluate(s: &str, values: &mut Values) -> String {
     }
     return match result {
         I(x) => x.to_string(),
+        F(x) => x.to_string(),
         S(x) => x,
         B(x) => x.to_string(),
         N => String::new(),

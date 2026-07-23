@@ -19,6 +19,8 @@ const HISTORYSIZE: usize = 500;
 pub enum VarTypes {
     ///int type
     I(i32),
+    ///float type
+    F(f32),
     ///string type
     S(String),
     /// bool type
@@ -55,6 +57,7 @@ impl VarTypes {
     pub fn get_s(&self) -> String {
         match self {
             Self::I(x) => x.to_string(),
+            Self::F(x) => x.to_string(),
             Self::S(x) => x.clone(),
             Self::B(x) => x.to_string(),
             Self::N => String::new(),
