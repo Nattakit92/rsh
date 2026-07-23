@@ -3,6 +3,7 @@ use std::env::Args;
 use std::path::PathBuf;
 use std::{env, io};
 
+use crate::commands::ErrType;
 use crate::config::{get_history, run_startup, store_history};
 use crate::parsing::{parse_arg, parse_commands};
 
@@ -121,14 +122,14 @@ pub fn normalise_dir(path: &PathBuf) -> PathBuf {
     return dir;
 }
 
-pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, String>> {
+pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, ErrType>> {
     if s.is_empty() {
         return vec![];
     }
 
     //parse and put command into queue
     match parse_commands(s, values) {
-        Err(e) => return vec![Err(format!("{}", e))],
+        Err(e) => return vec![Err(ErrType::new(422, format!("{}", e)))],
         _ => ()
     }
 
@@ -136,8 +137,8 @@ pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, String>> {
 }
 
 ///use to run command in values.com_q
-fn run_queue(values: &mut Values) -> Vec<Result<String, String>>{
-    let mut result: Vec<Result<String, String>> = vec![];
+fn run_queue(values: &mut Values) -> Vec<Result<String, ErrType>>{
+    let mut result: Vec<Result<String, ErrType>> = vec![];
 
     while !values.com_q.is_empty(){
 
@@ -146,6 +147,9 @@ fn run_queue(values: &mut Values) -> Vec<Result<String, String>>{
         //parse arguement
         match parse_arg(values){
             Ok(mut args) => {
+                if args.is_empty(){
+                    return vec![Ok(String::new())]
+                }
                 values.cur_com.command = args.remove(0);
                 if args.is_empty() {
                     values.cur_com.args = None;
@@ -154,7 +158,7 @@ fn run_queue(values: &mut Values) -> Vec<Result<String, String>>{
                 }
             }
             Err(e) => {
-                return vec![Err(format!("{}", e))];
+                return vec![Err(ErrType::new(422, format!("{}", e)))];
             }
         }
 
@@ -260,7 +264,7 @@ fn main() {
                     color = "\x1b[35m";
                 }
                 Err(x) => {
-                    eprint!("{}", x);
+                    eprint!("{}", x.message());
                     color = "\x1b[31m";
                 }
             }

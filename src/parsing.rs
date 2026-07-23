@@ -1,4 +1,7 @@
-use crate::{Values, commands};
+use std::collections::VecDeque;
+
+use crate::commands::ErrType;
+use crate::{Values, run_queue};
 use crate::evaluate::{compare, evaluate};
 use crate::{main_loop};
 
@@ -51,11 +54,31 @@ pub fn parse_commands(s: &str, queue: &mut Values) -> Result<(), String>{
 
 pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
     use State::*;
-    let s = values.get_com() + "\0";
+    let mut s = values.get_com();
     let mut result = Vec::new();
     let mut temp = String::new();
     let mut slice = String::new();
     let mut state: State = Normal;
+    if s.chars().last().unwrap() == '&'{
+        s.pop();
+        let mut values_ = values.clone();
+        values_.com_q = VecDeque::from([s.clone()]);
+        values_.cur_com.stdout = false;
+        std::thread::spawn(move || {
+            let result = run_queue(&mut values_);
+            for r in result {
+                match r {
+                    Ok(x) => {
+                        print!("{}", x);
+                    }
+                    Err(x) => {
+                        eprint!("{}", x.message());
+                    }
+                }
+            }
+        });
+        return Ok(Vec::new());
+    }
     for c in s.chars() {
         match state {
             Normal | Doublequote => match c {
@@ -149,7 +172,7 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
                     for r in result {
                         match r {
                             Ok(x) => slice += &x,
-                            Err(x) => return Err(x),
+                            Err(x) => return Err(x.message()),
                         }
                     }
                     values.cur_com.args = None;
@@ -162,11 +185,11 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
             },
             Pipe => {
                 values.cur_com.stdout = false;
-                let (_,stdin) = run(&slice, values, &mut result);
+                let stdin = run(&slice, values, &mut result);
                 for r in stdin {
                     match r {
                         Ok(x) => values.cur_com.pipe = Some(x),
-                        Err(x) => return Err(x),
+                        Err(x) => return Err(x.message()),
                     }
                 }
                 values.cur_com.args = None;
@@ -179,11 +202,11 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
             And => match c {
                 '&' => {
                     values.cur_com.stdout = false;
-                    let (_,stdout) = run(&slice, values, &mut result);
+                    let stdout = run(&slice, values, &mut result);
                     for r in stdout {
                         match r {
                             Ok(x) => print!("{}", x),
-                            Err(x) => return Err(x),
+                            Err(x) => return Err(x.message()),
                         }
                     }
                     values.cur_com.args = None;
@@ -192,34 +215,16 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
                     result = Vec::new();
                     temp = String::new();
                 }
-                _ => {
-                    let mut values_ = values.clone();
-                    values.cur_com.stdout = false;
-                    std::thread::spawn(move || {
-                        let (com,stdout) = run(&slice, &mut values_, &mut result);
-                        for r in stdout {
-                            match r {
-                                Ok(x) => println!("{}", x),
-                                Err(x) => eprintln!("{}: {}", com, x),
-                            }
-                        }
-                    });
-                    values.cur_com.args = None;
-                    state = Normal;
-                    slice = String::new();
-                    result = Vec::new();
-                    values.cur_com.stdout = true;
-                    temp = String::new();
-                }
+                _ => {}
             },
             OutRedirect => match c {
                 '>' => {
-                    let (_,stdout) = run(&slice, values, &mut result);
+                    let stdout = run(&slice, values, &mut result);
                     result = vec![String::from("write"), String::from("-a")];
                     for r in stdout {
                         match r {
                             Ok(x) => values.cur_com.pipe = Some(x),
-                            Err(x) => return Err(format!("{}", x)),
+                            Err(x) => return Err(format!("{}", x.message())),
                         }
                     }
                     values.cur_com.args = None;
@@ -229,12 +234,12 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
                     temp = String::new();
                 }
                 _ => {
-                    let (_,stdout) = run(&slice, values, &mut result);
+                    let stdout = run(&slice, values, &mut result);
                     result = vec![String::from("write")];
                     for r in stdout {
                         match r {
                             Ok(x) => values.cur_com.pipe = Some(x),
-                            Err(x) => return Err(format!("{}", x)),
+                            Err(x) => return Err(format!("{}", x.message())),
                         }
                     }
                     values.cur_com.args = None;
@@ -264,39 +269,14 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
         }
         _ => {}
     }
-    slice.pop();
     result.push(slice.clone());
     return Ok(result);
 }
 
-fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> (String, Vec<Result<String, String>>) {
-    if result.len() == 0 {
-        values.cur_com.command = String::from(slice);
-    } else {
-        values.cur_com.command = result.remove(0);
-        if slice != String::new(){
-            result.push(String::from(slice));
-        }
+fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> Vec<Result<String, ErrType>> {
+    if slice != String::new(){
+        result.push(String::from(slice));
     }
-    if !result.is_empty() {
-        values.cur_com.args = Some(result.clone());
-    }
-
-    if values.alias.contains_key(&values.cur_com.command){
-        let args = values.cur_com.args.clone();
-        let alias_val = values.alias[&values.cur_com.command].clone();
-        values.com_q.push_front(alias_val);
-        let mut new = parse_arg(values).unwrap();
-
-        values.cur_com.command = new.remove(0);
-        if !new.is_empty(){
-            if let Some(s) = args {
-                new.extend(s);
-            }
-            values.cur_com.args = Some(new);
-        }
-    }
-
-    let command = commands::search(values.cur_com.command.clone());
-    (values.cur_com.command.clone(), command.run(values))
+    values.com_q.push_front(result.join(" "));
+    run_queue(values)
 }

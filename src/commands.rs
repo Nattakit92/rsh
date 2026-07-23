@@ -23,6 +23,30 @@ pub enum Commands {
     If
 }
 
+#[derive(Clone,Debug)]
+pub struct ErrType {
+    /// Parsing error: 422
+    /// Notfound : 404
+    /// Invalid args: 400
+    code: u32,
+    message: String
+}
+
+impl ErrType{
+    pub fn new(c:u32, m:String) -> Self{
+        Self { code: c, message: m }
+    }
+    pub fn message(&self) -> String{
+        self.message.clone()
+    }
+    fn format(&mut self, command: &str){
+        match self.code {
+            404 => self.message = format!("{}: {}\n", self.message(), command),
+            _ => self.message = format!("{}: {}\n", command, self.message())
+        }
+    }
+}
+
 pub fn search(command: String) -> Commands {
     use Commands::*;
     match command.as_str() {
@@ -43,9 +67,9 @@ pub fn search(command: String) -> Commands {
 }
 
 impl Commands {
-    pub fn run(&self, value: &mut Values) -> Vec<Result<String, String>> {
+    pub fn run(&self, value: &mut Values) -> Vec<Result<String, ErrType>> {
         use Commands::*;
-        match self {
+        let mut r = match self {
             Unknown(command) => try_run(command, value),
             Exit => exit(),
             Echo => echo(value),
@@ -59,11 +83,22 @@ impl Commands {
             Write => write(value),
             Alias => alias(value),
             If => if_(value)
+        };
+        for i in 0..r.len(){
+            match &r[i] {
+                Ok(_) => {},
+                Err(e) => {
+                    let mut err = e.clone();
+                    err.format(&value.cur_com.command);
+                    r[i] = Err(err);
+                }
+            }
         }
+        r
     }
 }
 
-fn execute(mut s: process::Child, value: &mut Values) -> Vec<Result<String, String>> {
+fn execute(mut s: process::Child, value: &mut Values) -> Vec<Result<String, ErrType>> {
     if !value.cur_com.pipe.is_none() {
         let mut stdin = s.stdin.take().unwrap();
         stdin
@@ -75,7 +110,7 @@ fn execute(mut s: process::Child, value: &mut Values) -> Vec<Result<String, Stri
     if !s.stderr.is_none() {
         _ = s.stderr.unwrap().read_to_string(&mut x);
         if !x.is_empty() {
-            return vec![Err(x)];
+            return vec![Err(ErrType{code: 400,message: x})];
         }
     }
     if s.stdout.is_none() {
@@ -88,7 +123,7 @@ fn execute(mut s: process::Child, value: &mut Values) -> Vec<Result<String, Stri
     return vec![Ok(x)]
 }
 
-fn try_run(command: &str, value: &mut Values) -> Vec<Result<String, String>> {
+fn try_run(command: &str, value: &mut Values) -> Vec<Result<String, ErrType>> {
     if command == "" {
         return vec![Ok(String::new())];
     }
@@ -119,19 +154,25 @@ fn try_run(command: &str, value: &mut Values) -> Vec<Result<String, String>> {
                     Ok(s) => {
                         return execute(s,value);
                     },
-                    Err(_) => return vec![Err(format!("Not an executable\n"))],
+                    Err(_) => return vec![Err(ErrType{
+                        code: 400,
+                        message: format!("Not an executable")
+                    })],
                 }
             }
-            vec![Err(format!("Unknown command: {}\n", command))]
+            vec![Err(ErrType{
+                code: 404,
+                message: format!("Unknown command")}
+            )]
         }
     }
 }
 
-fn exit() -> Vec<Result<String, String>> {
+fn exit() -> Vec<Result<String, ErrType>> {
     process::exit(1);
 }
 
-fn echo(value: &mut Values) -> Vec<Result<String, String>> {
+fn echo(value: &mut Values) -> Vec<Result<String, ErrType>> {
     if value.cur_com.args.is_none() {
         return vec![Ok(String::new())];
     }
@@ -140,7 +181,7 @@ fn echo(value: &mut Values) -> Vec<Result<String, String>> {
     for s in args_ {
         result = format!("{}{}\n", result, s);
     }
-    return vec![Ok(result)];
+    vec![Ok(result)]
 }
 
 ///return
@@ -172,37 +213,43 @@ fn push_dir(arg: &str, dir: &PathBuf) -> PathBuf {
         return dir_;
     }
     dir_.push(PathBuf::from(arg));
-    return dir_;
+    dir_
 }
 
-fn cd(value: &mut Values) -> Vec<Result<String, String>> {
+fn cd(value: &mut Values) -> Vec<Result<String, ErrType>> {
     if value.cur_com.args.is_none() {
         return vec![Ok(String::new())];
     }
     let args = value.cur_com.args.clone().unwrap();
     if args.len() > 1 {
-        return vec![Err(String::from("too many arguments\n"))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("too many arguments")
+        })];
     }
     let arg = &args[0].trim();
     let dir = push_dir(arg, &value.dir);
     match dir_exists(&dir) {
         -1 => {
-            return vec![Err(format!(
-                "cannot access {}: No such file or directory\n",
-                arg
-            ))];
+            return vec![Err(ErrType{
+                code: 400,
+                message: format!("cannot access {}: No such file or directory",arg)
+            })];
         }
         0 => {
-            return vec![Err(format!("{}: Not a directory\n", arg))];
+            return vec![Err(ErrType{
+                code: 400,
+                message: format!("{}: Not a directory", arg)
+            })];
         }
         _ => {}
     }
     value.dir = normalise_dir(&dir);
-    return vec![Ok(String::new())];
+    vec![Ok(String::new())]
 }
 
-fn ls(value: &mut Values) -> Vec<Result<String, String>> {
-    let mut result: Vec<Result<String, String>> = Vec::new();
+fn ls(value: &mut Values) -> Vec<Result<String, ErrType>> {
+    let mut result: Vec<Result<String, ErrType>> = Vec::new();
     if value.cur_com.args.is_none() {
         let mut s = String::new();
         let paths = fs::read_dir(&value.dir).unwrap();
@@ -220,10 +267,10 @@ fn ls(value: &mut Values) -> Vec<Result<String, String>> {
     for arg in args {
         match dir_exists(&push_dir(&arg, &value.dir)) {
             -1 => {
-                result.push(Err(format!(
-                    "cannot access {}: No such file or directory\n",
-                    arg
-                )));
+                result.push(Err(ErrType{
+                    code: 400,
+                    message: format!("cannot access {}: No such file or directory",arg)
+                }));
                 continue;
             }
             0 => {
@@ -250,20 +297,26 @@ fn ls(value: &mut Values) -> Vec<Result<String, String>> {
         return result;
     }
     result.push(Ok(s));
-    return result;
+    result
 }
 
-fn pwd(value: &mut Values) -> Vec<Result<String, String>> {
+fn pwd(value: &mut Values) -> Vec<Result<String, ErrType>> {
     return vec![Ok(String::from(value.dir.to_str().unwrap()) + "\n")];
 }
 
-fn let_(value: &mut Values) -> Vec<Result<String, String>> {
+fn let_(value: &mut Values) -> Vec<Result<String, ErrType>> {
     if value.cur_com.args.is_none() {
-        return vec![Err(String::from("expect variable name\n"))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("expect variable name")
+        })];
     }
     let args = value.cur_com.args.clone().unwrap();
     if args.len() > 1 {
-        return vec![Err(String::from("too many arguments\n"))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("too many arguments")
+        })];
     }
     let mut var_name = String::new();
     let mut var_val = String::new();
@@ -280,7 +333,10 @@ fn let_(value: &mut Values) -> Vec<Result<String, String>> {
         var_name.push(c);
     }
     if var_name.parse::<i32>().is_ok() {
-        return vec![Err(format!("{} is not a valid name", var_name))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("{} is not a valid name", var_name)
+        })];
     }
     if !found_eq {
         value.vars.insert(args[0].clone(), VarTypes::N);
@@ -296,15 +352,15 @@ fn let_(value: &mut Values) -> Vec<Result<String, String>> {
         Ok(x) => _ = value.vars.insert(var_name, VarTypes::I(x)),
         Err(_) => _ = value.vars.insert(var_name, VarTypes::S(var_val)),
     }
-    return vec![Ok(String::new())];
+    vec![Ok(String::new())]
 }
 
-fn touch(value: &mut Values) -> Vec<Result<String, String>> {
+fn touch(value: &mut Values) -> Vec<Result<String, ErrType>> {
     if value.cur_com.args.is_none() {
         return vec![Ok(String::new())];
     }
     let args = value.cur_com.args.clone().unwrap();
-    let mut result: Vec<Result<String, String>> = Vec::new();
+    let mut result: Vec<Result<String, ErrType>> = Vec::new();
     for i in 0..args.len() {
         let dir = push_dir(&args[i], &value.dir);
         if dir_exists(&dir) == 0{
@@ -312,15 +368,21 @@ fn touch(value: &mut Values) -> Vec<Result<String, String>> {
         }
         let x = File::create(dir);
         if x.is_err() {
-            result.push(Err(format!("can not create file {}\n", args[i])));
-            result.push(Err(format!("can not create file {}\n", args[i])));
+            result.push(Err(ErrType{
+                code: 400,
+                message: format!("can not create file {}", args[i])
+            }));
+            result.push(Err(ErrType{
+                code: 400,
+                message: format!("can not create file {}", args[i])
+            }));
         }
     }
-    return result;
+    result
 }
 
-fn cat(value: &mut Values) -> Vec<Result<String, String>> {
-    let mut result: Vec<Result<String, String>> = Vec::new();
+fn cat(value: &mut Values) -> Vec<Result<String, ErrType>> {
+    let mut result: Vec<Result<String, ErrType>> = Vec::new();
     if value.cur_com.args.is_none() {
         return vec![Ok(String::new())];
     }
@@ -330,14 +392,17 @@ fn cat(value: &mut Values) -> Vec<Result<String, String>> {
     for arg in args {
         match dir_exists(&push_dir(&arg, &value.dir)) {
             -1 => {
-                result.push(Err(format!(
-                    "cannot access {}: No such file or directory\n",
-                    arg
-                )));
+                result.push(Err(ErrType{
+                    code: 400,
+                    message: format!("cannot access {}: No such file or directory",arg)
+                }));
                 continue;
             }
             1 => {
-                result.push(Err(format!("cannot read {} is a directory\n", arg)));
+                result.push(Err(ErrType{
+                    code: 400,
+                    message: format!("cannot read {} is a directory", arg)
+                    }));
                 continue;
             }
             _ => {}
@@ -351,7 +416,10 @@ fn cat(value: &mut Values) -> Vec<Result<String, String>> {
 
         let handler = file.read_to_string(&mut contents);
         if handler.is_err() {
-            result.push(Err(format!("failed to read: {}\n", arg)));
+            result.push(Err(ErrType{
+                code: 400,
+                message: format!("failed to read: {}", arg)
+            }));
             continue;
         }
         s += &contents;
@@ -360,11 +428,11 @@ fn cat(value: &mut Values) -> Vec<Result<String, String>> {
         return result;
     }
     result.push(Ok(s));
-    return result;
+    result
 }
 
-fn mkdir(value: &mut Values) -> Vec<Result<String, String>> {
-    let mut result: Vec<Result<String, String>> = Vec::new();
+fn mkdir(value: &mut Values) -> Vec<Result<String, ErrType>> {
+    let mut result: Vec<Result<String, ErrType>> = Vec::new();
     if value.cur_com.args.is_none() {
         return vec![Ok(String::new())];
     }
@@ -375,30 +443,37 @@ fn mkdir(value: &mut Values) -> Vec<Result<String, String>> {
         match dir_exists(&temp) {
             1 => {}
             _ => {
-                result.push(Err(format!(
-                    "directory {} does not exist\n",
-                    temp.to_string_lossy()
-                )));
+                result.push(Err(ErrType{
+                    code: 400,
+                    message: format!("directory {} does not exist",temp.to_string_lossy()
+                )
+                }));
                 continue;
             }
         }
         let dir_ = push_dir(&arg, &value.dir);
         let handler = fs::create_dir(dir_);
         if handler.is_err() {
-            result.push(Err(format!("failed to create: {}\n", arg)));
+            result.push(Err(ErrType{
+                code: 400,
+                message: format!("failed to create: {}", arg)
+            }));
             continue;
         }
     }
-    return result;
+    result
 }
 
-fn write(value: &mut Values) -> Vec<Result<String, String>> {
+fn write(value: &mut Values) -> Vec<Result<String, ErrType>> {
     if value.cur_com.args.is_none() {
         return vec![Ok(String::new())];
     }
     let args = value.cur_com.args.clone().unwrap();
     if value.cur_com.pipe.is_none() {
-        return vec![Err(String::from("cannot write"))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("cannot write")
+        })];
     }
     if args.len() == 1 {
         let dir_ = push_dir(&args[0], &value.dir);
@@ -407,17 +482,17 @@ fn write(value: &mut Values) -> Vec<Result<String, String>> {
         match dir_exists(&parent) {
             1 => {}
             _ => {
-                return vec![Err(format!(
-                    "cannot access {}: No such file or directory\n",
-                    args[0]
-                ))];
+                return vec![Err(ErrType{
+                    code: 400,
+                    message: format!("cannot access {}: No such file or directory",args[0])
+                })];
             }
         }
         let mut file = File::create(dir_).unwrap();
         _ = file.write_all(value.cur_com.pipe.clone().unwrap().as_bytes());
         return vec![Ok(String::new())];
     }
-    let mut result: Vec<Result<String, String>> = Vec::new();
+    let mut result: Vec<Result<String, ErrType>> = Vec::new();
     let mut flaged = false;
     for arg in args {
         if arg.as_bytes()[0] == b'-' {
@@ -428,10 +503,10 @@ fn write(value: &mut Values) -> Vec<Result<String, String>> {
         match dir_exists(&dir_) {
             0 => {}
             _ => {
-                result.push(Err(format!(
-                    "cannot access {}: No such file or directory\n",
-                    arg
-                )));
+                result.push(Err(ErrType{
+                    code: 400,
+                    message: format!("cannot access {}: No such file or directory",arg)
+                }));
             }
         }
         let mut data = value.cur_com.pipe.clone().unwrap();
@@ -440,7 +515,10 @@ fn write(value: &mut Values) -> Vec<Result<String, String>> {
             let mut contents = String::new();
             let handler = file.read_to_string(&mut contents);
             if handler.is_err() {
-                result.push(Err(format!("failed to read: {}\n", arg)));
+                result.push(Err(ErrType{
+                    code: 400,
+                    message: format!("failed to read: {}", arg)
+                }));
                 continue;
             }
             data += &contents;
@@ -448,16 +526,22 @@ fn write(value: &mut Values) -> Vec<Result<String, String>> {
         let mut file = File::create(dir_).unwrap();
         _ = file.write_all(data.as_bytes());
     }
-    return result;
+    result
 }
 
-fn alias(value: &mut Values) -> Vec<Result<String,String>>{
+fn alias(value: &mut Values) -> Vec<Result<String, ErrType>>{
     if value.cur_com.args.is_none() {
-        return vec![Err(String::from("expect alias\n"))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("expect alias")
+        })];
     }
     let args = value.cur_com.args.clone().unwrap();
     if args.len() > 1 {
-        return vec![Err(String::from("too many arguments\n"))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("too many arguments")
+        })];
     }
     let mut var_name = String::new();
     let mut var_val = String::new();
@@ -474,24 +558,38 @@ fn alias(value: &mut Values) -> Vec<Result<String,String>>{
         var_name.push(c);
     }
     if var_name.parse::<i32>().is_ok() {
-        return vec![Err(format!("{} is not a valid name", var_name))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("{} is not a valid name", var_name)
+        })];
     }
     if !found_eq {
-        return vec![Err(String::from("expect value\n"))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("expect value")
+        })];
     }
     value.alias.insert(var_name, var_val);
 
-    return vec![Ok(String::new())];
+    vec![Ok(String::new())]
 }
 
-fn if_(value: &mut Values) -> Vec<Result<String,String>>{
+fn if_(value: &mut Values) -> Vec<Result<String,ErrType>>{
     if value.cur_com.args.is_none(){
-        return vec![Err(String::from("expect argument\n"))];
+        while !(value.com_q.is_empty() || value.get_com() == "end"){}
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("expect argument")
+        })];
     }
     let args = value.cur_com.args.clone().unwrap();
     let condition = args[0].clone().parse::<bool>();
     if condition.is_err(){
-        return vec![Err(String::from("not a valid condition\n"))];
+        while !(value.com_q.is_empty() || value.get_com() == "end"){}
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("not a valid condition")
+        })];
     }
     let condition = condition.unwrap();
     if !condition {
@@ -500,7 +598,10 @@ fn if_(value: &mut Values) -> Vec<Result<String,String>>{
                 return vec![Ok(String::new())];
             }
         }
-        return vec![Err(String::from("could not found end\n"))];
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("could not found end")
+        })];
     }else{
         let mut value_temp = value.clone();
         value_temp.cur_com = CmdVals::new();
@@ -513,5 +614,12 @@ fn if_(value: &mut Values) -> Vec<Result<String,String>>{
             value_temp.com_q.push_back(com);
         }
     }
-    return vec![Err(String::from("could not found end\n"))];
+    vec![Err(ErrType{
+        code: 400,
+        message: format!("could not found end")
+    })]
 }
+
+// fn while(value: &mut Values) -> Vec<Result<String,String>>{
+
+// }
