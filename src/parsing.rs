@@ -29,21 +29,23 @@ pub fn parse_commands(s: &str, queue: &mut Values) -> Result<(), String>{
                 '\n' => {
                     queue.com_q.push_back(line.clone());
                     line = String::new();
+                    continue;
                 },
                 '\"' => state = Doublequote,
                 '\'' => state = Singlequote,
-                x => line.push(x)
+                _ => ()
             }
             Doublequote => match c {
                 '\"' => state = Normal,
-                _ => continue
+                _ => ()
             }
             Singlequote => match c {
                 '\'' => state = Normal,
-                _ => continue
+                _ => ()
             }
-            _ => continue
+            _ => ()
         }
+        line.push(c);
     }
     match state {
         Doublequote => Err(String::from("Doublequote opened but never closed: expected \"\n")),
@@ -61,7 +63,7 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
     let mut state: State = Normal;
 
     //check for background process
-    if s.chars().last().unwrap() == '&'{
+    if s.ends_with('&'){
         s.pop();
         let mut values_ = values.clone();
         values_.com_q = VecDeque::from([s.clone()]);

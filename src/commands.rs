@@ -15,6 +15,10 @@ pub enum Commands {
     Cd,
     Pwd,
     Let,
+    Int,
+    Float,
+    Boolean,
+    Str,
     Touch,
     Cat,
     Mkdir,
@@ -56,6 +60,10 @@ pub fn search(command: String) -> Commands {
         "cd" => Cd,
         "pwd" => Pwd,
         "let" => Let,
+        "int" => Int,
+        "float" => Float,
+        "bool" => Boolean,
+        "str" => Str,
         "touch" => Touch,
         "cat" => Cat,
         "mkdir" => Mkdir,
@@ -76,6 +84,10 @@ impl Commands {
             Ls => ls(value),
             Cd => cd(value),
             Pwd => pwd(value),
+            Int => int(value),
+            Float => float(value),
+            Boolean => boolean(value),
+            Str => string(value),
             Let => let_(value),
             Touch => touch(value),
             Cat => cat(value),
@@ -304,22 +316,20 @@ fn pwd(value: &mut Values) -> Vec<Result<String, ErrType>> {
     return vec![Ok(String::from(value.dir.to_str().unwrap()) + "\n")];
 }
 
-fn let_(value: &mut Values) -> Vec<Result<String, ErrType>> {
+fn let_check(value: &mut Values, var_name: &mut String, var_val: &mut String) -> Result<(), ErrType>{
+    let args = value.cur_com.args.clone().unwrap();
     if value.cur_com.args.is_none() {
-        return vec![Err(ErrType{
+        return Err(ErrType{
             code: 400,
             message: format!("expect variable name")
-        })];
+        });
     }
-    let args = value.cur_com.args.clone().unwrap();
     if args.len() > 1 {
-        return vec![Err(ErrType{
+        return Err(ErrType{
             code: 400,
             message: format!("too many arguments")
-        })];
+        });
     }
-    let mut var_name = String::new();
-    let mut var_val = String::new();
     let mut found_eq = false;
     for c in args[0].chars() {
         if found_eq {
@@ -333,30 +343,100 @@ fn let_(value: &mut Values) -> Vec<Result<String, ErrType>> {
         var_name.push(c);
     }
     if var_name.parse::<i32>().is_ok() {
-        return vec![Err(ErrType{
+        return Err(ErrType{
             code: 400,
             message: format!("{} is not a valid name", var_name)
-        })];
+        });
     }
-    if !found_eq {
-        value.vars.insert(args[0].clone(), VarTypes::N);
+    Ok(())
+}
+
+fn int(value: &mut Values) -> Vec<Result<String, ErrType>> {
+    use VarTypes::*;
+    let mut var_val = String::new();
+    let mut var_name = String::new();
+    match let_check(value, &mut var_name, &mut var_val) {
+        Ok(_) => (),
+        Err(e) => return vec![Err(e)],
+    }
+    _ = match VarTypes::set(&var_val){
+        I(x) => value.vars.insert(var_name, I(x)),
+        F(x) => value.vars.insert(var_name, I(x as i32)),
+        B(x) => value.vars.insert(var_name, I(x as i32)),
+        _ => return vec![Err(ErrType{
+                code:400,
+                message: format!("failed to parse")})],
+    };
+
+    vec![Ok(String::new())]
+}
+
+fn float(value: &mut Values) -> Vec<Result<String, ErrType>> {
+    use VarTypes::*;
+    let mut var_val = String::new();
+    let mut var_name = String::new();
+    match let_check(value, &mut var_name, &mut var_val) {
+        Ok(_) => (),
+        Err(e) => return vec![Err(e)],
+    }
+    _ = match VarTypes::set(&var_val){
+        I(x) => value.vars.insert(var_name, F(x as f32)),
+        F(x) => value.vars.insert(var_name, F(x)),
+        _ => return vec![Err(ErrType{
+                code:400,
+                message: format!("failed to parse")})],
+    };
+
+    vec![Ok(String::new())]
+}
+
+fn boolean(value: &mut Values) -> Vec<Result<String, ErrType>> {
+    use VarTypes::*;
+    let mut var_val = String::new();
+    let mut var_name = String::new();
+    match let_check(value, &mut var_name, &mut var_val) {
+        Ok(_) => (),
+        Err(e) => return vec![Err(e)],
+    }
+    _ = match VarTypes::set(&var_val){
+        I(x) => value.vars.insert(var_name, B(x>0)),
+        B(x) => value.vars.insert(var_name, B(x)),
+        _ => return vec![Err(ErrType{
+                code:400,
+                message: format!("failed to parse")})],
+    };
+
+    vec![Ok(String::new())]
+}
+
+fn string(value: &mut Values) -> Vec<Result<String, ErrType>> {
+    use VarTypes::*;
+    let mut var_val = String::new();
+    let mut var_name = String::new();
+    match let_check(value, &mut var_name, &mut var_val) {
+        Ok(_) => (),
+        Err(e) => return vec![Err(e)],
+    }
+
+    value.vars.insert(var_name, S(var_val));
+
+    vec![Ok(String::new())]
+}
+
+fn let_(value: &mut Values) -> Vec<Result<String, ErrType>> {
+    use VarTypes::*;
+    let mut var_val = String::new();
+    let mut var_name = String::new();
+    match let_check(value, &mut var_name, &mut var_val) {
+        Ok(_) => (),
+        Err(e) => return vec![Err(e)],
+    }
+    if var_val == String::new() {
+        value.vars.insert(var_name, N);
         return vec![Ok(String::new())];
     }
 
-    match var_val.parse::<bool>() {
-        Ok(x) => _ = value.vars.insert(var_name.clone(), VarTypes::B(x)),
-        Err(_) => _ = (),
-    }
-
-    match var_val.parse::<i32>() {
-        Ok(x) => _ = value.vars.insert(var_name.clone(), VarTypes::I(x)),
-        Err(_) => _ = (),
-    }
-
-    match var_val.parse::<f32>() {
-        Ok(x) => _ = value.vars.insert(var_name, VarTypes::F(x)),
-        Err(_) => _ = value.vars.insert(var_name, VarTypes::S(var_val)),
-    }
+    value.vars.insert(var_name,VarTypes::set(&var_val));
 
     vec![Ok(String::new())]
 }

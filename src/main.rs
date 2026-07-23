@@ -30,23 +30,35 @@ pub enum VarTypes {
 }
 
 impl VarTypes {
-    pub fn set_i(val: String) -> VarTypes {
-        Self::I(val.parse::<i32>().unwrap())
-    }
-    pub fn set_s(val: String) -> VarTypes {
-        Self::S(val)
-    }
-    pub fn set_b(val: String) -> VarTypes {
-        Self::B(val.parse::<bool>().unwrap())
-    }
-    pub fn get_type(val: String) -> VarTypes {
-        if val.parse::<i32>().is_ok() {
-            return Self::I(0);
+    pub fn set(val: &String) -> VarTypes{
+        let test = vec![Self::set_b(val), Self::set_i(val), Self::set_f(val)];
+        for t in test {
+            if t.is_some(){
+                return t.unwrap();
+            }
         }
-        if val.parse::<bool>().is_ok(){
-            return Self::B(false);
+        Self::set_s(val)
+    }
+    pub fn set_i(val: &String) -> Option<VarTypes> {
+        match val.parse::<i32>(){
+            Ok(x) => Some(Self::I(x)),
+            Err(_) => None
         }
-        Self::S(val)
+    }
+    pub fn set_f(val: &String) -> Option<VarTypes> {
+        match val.parse::<f32>(){
+            Ok(x) => Some(Self::F(x)),
+            Err(_) => None
+        }
+    }
+    pub fn set_b(val: &String) -> Option<VarTypes> {
+        match val.parse::<bool>(){
+            Ok(x) => Some(Self::B(x)),
+            Err(_) => None
+        }
+    }
+    pub fn set_s(val: &String) -> VarTypes {
+        Self::S(val.clone())
     }
     pub fn get_i(&self) -> i32 {
         if let Self::I(i) = self {
@@ -64,6 +76,7 @@ impl VarTypes {
         }
     }
 }
+
 #[derive(Clone)]
 pub struct Values {
     dir: PathBuf,
@@ -220,7 +233,9 @@ fn run_arg(arg: String, values: &mut Values, args: Args){
             Ok(x) => {
                 print!("{}", x);
             }
-            Err(_) => {}
+            Err(e) => {
+                eprint!("{}", e.message());
+            }
         }
     }
     values.cur_com = CmdVals::new();

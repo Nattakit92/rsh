@@ -14,23 +14,19 @@ enum StateCompare {
 }
 
 fn find_var(s: &str, values: &mut Values) -> VarTypes {
+    let mut s_ = String::from(s);
     let vars = &values.vars;
-    if vars.contains_key(s) {
+    if s.parse::<i32>().is_err() && vars.contains_key(s) {
         return vars.get(s).unwrap().clone();
     }
-    match s.parse::<i32>() {
-        Ok(x) => {
-            return I(x)
-        },
-        Err(_) => (),
+    if s.starts_with('\"') && s.ends_with('\"') && s.len() > 1{
+        s_.pop();
+        s_.remove(0);
+    }else if s.starts_with('\'') && s.ends_with('\'') && s.len() > 1{
+        s_.pop();
+        s_.remove(0);
     }
-    match s.parse::<f32>() {
-        Ok(x) => {
-            return F(x);
-        },
-        Err(_) => (),
-    }
-    N
+    VarTypes::set(&s_)
 }
 
 fn add(var1: VarTypes, var2: VarTypes) -> VarTypes {
