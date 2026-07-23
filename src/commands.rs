@@ -364,7 +364,7 @@ fn int(value: &mut Values) -> Vec<Result<String, ErrType>> {
         F(x) => value.vars.insert(var_name, I(x as i32)),
         B(x) => value.vars.insert(var_name, I(x as i32)),
         _ => return vec![Err(ErrType{
-                code:400,
+                code: 422,
                 message: format!("failed to parse")})],
     };
 
@@ -383,7 +383,7 @@ fn float(value: &mut Values) -> Vec<Result<String, ErrType>> {
         I(x) => value.vars.insert(var_name, F(x as f32)),
         F(x) => value.vars.insert(var_name, F(x)),
         _ => return vec![Err(ErrType{
-                code:400,
+                code: 422,
                 message: format!("failed to parse")})],
     };
 
@@ -402,7 +402,7 @@ fn boolean(value: &mut Values) -> Vec<Result<String, ErrType>> {
         I(x) => value.vars.insert(var_name, B(x>0)),
         B(x) => value.vars.insert(var_name, B(x)),
         _ => return vec![Err(ErrType{
-                code:400,
+                code: 422,
                 message: format!("failed to parse")})],
     };
 
