@@ -1,21 +1,21 @@
-use crate::{Values, commands};
+use crate::{CmdVals, Values, commands};
 use std::collections::VecDeque;
 use std::env;
 
 pub fn get_history() -> VecDeque<String>{
     let mut values = Values::new();
     values.dir = env::home_dir().unwrap();
-    values.args = Some(vec![String::from(".config"),String::from(".config/rsh")]);
+    values.cur_com.args = Some(vec![String::from(".config"), String::from(".config/rsh")]);
 
-    let mkdir = commands::search("mkdir");
+    let mkdir = commands::search(String::from("mkdir"));
     mkdir.unwrap().run(&mut values);
-    values.args = Some(vec![String::from(".config/rsh/history")]);
+    values.cur_com.args = Some(vec![String::from(".config/rsh/history")]);
 
-    let touch = commands::search("touch");
+    let touch = commands::search(String::from("touch"));
     touch.unwrap().run(&mut values);
 
     let mut history: VecDeque<String> = VecDeque::from([String::new()]);
-    let cat = commands::search("cat");
+    let cat = commands::search(String::from("cat"));
     let temp = cat.unwrap().run(&mut values);
 
     if temp.is_empty(){
@@ -31,28 +31,28 @@ pub fn get_history() -> VecDeque<String>{
         }
         history[i].push(c);
     }
-    values.args = None;
+    values.cur_com = CmdVals::new();
     history
 }
 
 pub fn store_history(history: VecDeque<String>){
     let mut values = Values::new();
     values.dir = env::home_dir().unwrap();
-    values.args = Some(vec![String::from(".config/rsh/history")]);
+    values.cur_com.args = Some(vec![String::from(".config/rsh/history")]);
 
-    let write = commands::search("write");
-    values.pipe = Some(Vec::from(history).join("\t"));
+    let write = commands::search(String::from("write"));
+    values.cur_com.pipe = Some(Vec::from(history).join("\t"));
 
     write.unwrap().run(&mut values);
-    values.args = None;
+    values.cur_com = CmdVals::new();
 }
 
 pub fn run_startup(values: &mut Values){
     values.dir = env::home_dir().unwrap();
-    values.args = Some(vec![String::from(".config/rsh/rsh.rsh")]);
-    let cat = commands::search("cat");
+    values.cur_com.args = Some(vec![String::from(".config/rsh/rsh.rsh")]);
+    let cat = commands::search(String::from("cat"));
     let result = cat.unwrap().run(values)[0].clone();
-    values.args = None;
+    values.cur_com = CmdVals::new();
     if result.is_err(){
         return;
     }
@@ -63,7 +63,7 @@ pub fn run_startup(values: &mut Values){
         .map(|l| format!("{}\n", l))
         .collect();
 
-    let (result, _) = crate::main_loop(values, s.trim());
+    let result = crate::main_loop(values, s.trim());
 
     for r in result {
         match r {
@@ -73,5 +73,5 @@ pub fn run_startup(values: &mut Values){
             Err(_) => {}
         }
     }
-    values.args = None;
+    values.cur_com = CmdVals::new();
 }

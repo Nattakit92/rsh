@@ -1,6 +1,6 @@
-use crate::commands;
+use crate::{Values, commands};
 use crate::evaluate::{compare, evaluate};
-use crate::{Values, main_loop};
+use crate::{main_loop};
 
 enum State {
     Normal,
@@ -15,243 +15,251 @@ enum State {
     OutRedirect,
 }
 
-pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
+pub fn parse_commands(s: &str, queue: &mut Values) -> Result<(), String>{
     use State::*;
-    let mut s_ = String::from(s);
+    let s_ = String::from(s) + "\0";
+    let mut line = String::new();
+    let mut state: State = Normal;
+    for c in s_.chars(){
+        match state {
+            Normal => match c {
+                '\n' => queue.com_q.push_back(line.clone()),
+                '\"' => state = Doublequote,
+                '\'' => state = Singlequote,
+                x => line.push(x)
+            }
+            Doublequote => match c {
+                '\"' => state = Normal,
+                _ => continue
+            }
+            Singlequote => match c {
+                '\'' => state = Normal,
+                _ => continue
+            }
+            _ => continue
+        }
+    }
+    match state {
+        Doublequote => Err(String::from("Doublequote opened but never closed: expected \"\n")),
+        Singlequote => Err(String::from("Singlequote opened but never closed: expected \'\n")),
+        _ => Ok(())
+    }
+}
+
+pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
+    use State::*;
+    let s = values.get_com() + "\0";
     let mut result = Vec::new();
     let mut temp = String::new();
     let mut slice = String::new();
     let mut state: State = Normal;
-    s_.push('\0');
-    loop {
-        for c in s_.chars() {
-            match state {
-                Normal | Doublequote => match c {
-                    '\\' => {
-                        state = Backslash(Box::from(state));
-                        continue;
-                    }
-                    '{' => {
-                        state = CurlyBracket(Box::from(state));
-                        continue;
-                    }
-                    '[' => {
-                        state = SquareBracket(Box::from(state));
-                        continue;
-                    }
-                    '(' => {
-                        state = Bracket(Box::from(state));
-                        continue;
-                    }
-                    _ => {}
-                },
+    for c in s.chars() {
+        match state {
+            Normal | Doublequote => match c {
+                '\\' => {
+                    state = Backslash(Box::from(state));
+                    continue;
+                }
+                '{' => {
+                    state = CurlyBracket(Box::from(state));
+                    continue;
+                }
+                '[' => {
+                    state = SquareBracket(Box::from(state));
+                    continue;
+                }
+                '(' => {
+                    state = Bracket(Box::from(state));
+                    continue;
+                }
                 _ => {}
-            }
-            match state {
-                Normal => {
-                    match c {
-                        ' ' => {
-                            if slice == String::new() {
-                                continue;
-                            }
-                            result.push(slice.clone());
-                            slice = String::new();
-                        }
-                        '\'' => state = Singlequote,
-                        '\"' => state = Doublequote,
-                        '|' => state = Pipe,
-                        '&' => state = And,
-                        '>' => state = OutRedirect,
-                        '\n' => {
-                            let (com, stdout) = run(&slice, values, &mut result);
-                            for r in stdout {
-                                match r {
-                                    Ok(x) => print!("{}", x),
-                                    Err(x) => eprint!("{} {}", com, x),
-                                }
-                            }
-                            values.args = None;
-                            state = Normal;
-                            slice = String::new();
-                            result = Vec::new();
-                            temp = String::new();
+            },
+            _ => {}
+        }
+        match state {
+            Normal => {
+                match c {
+                    ' ' => {
+                        if slice == String::new() {
                             continue;
                         }
-                        _ => slice.push(c),
-                    };
+                        result.push(slice.clone());
+                        slice = String::new();
+                    }
+                    '\'' => state = Singlequote,
+                    '\"' => state = Doublequote,
+                    '|' => state = Pipe,
+                    '&' => state = And,
+                    '>' => state = OutRedirect,
+                    _ => slice.push(c),
+                };
+            }
+            Singlequote => match c {
+                '\'' => state = Normal,
+                _ => slice.push(c),
+            },
+            Doublequote => match c {
+                '\"' => state = Normal,
+                _ => slice.push(c),
+            },
+            Backslash(x) => {
+                if c == 'n' {
+                    slice.push('\n');
+                } else {
+                    slice.push('\\');
+                    slice.push(c);
                 }
-                Singlequote => match c {
-                    '\'' => state = Normal,
-                    _ => slice.push(c),
-                },
-                Doublequote => match c {
-                    '\"' => state = Normal,
-                    _ => slice.push(c),
-                },
-                Backslash(x) => {
-                    if c == 'n' {
-                        slice.push('\n');
+                state = *x;
+            }
+            CurlyBracket(x) => match c {
+                '}' => {
+                    if matches!(*x, CurlyBracket(_)) {
+                        temp = evaluate(&temp, values);
                     } else {
-                        slice.push('\\');
-                        slice.push(c);
+                        slice += &evaluate(&temp, values);
                     }
                     state = *x;
                 }
-                CurlyBracket(x) => match c {
-                    '}' => {
-                        if matches!(*x, CurlyBracket(_)) {
-                            temp = evaluate(&temp, values);
-                        } else {
-                            slice += &evaluate(&temp, values);
-                        }
-                        state = *x;
-                    }
-                    '{' => {
-                        state = CurlyBracket(Box::from(*x));
-                        state = CurlyBracket(Box::from(state));
-                    }
-                    _ => {
-                        temp.push(c);
-                        state = CurlyBracket(Box::from(*x));
-                    }
-                },
-                SquareBracket(x) => match c {
-                    ']' => {
-                        slice = slice + &compare(&temp, values);
-                        state = *x;
-                    }
-                    _ => {
-                        temp.push(c);
-                        state = SquareBracket(Box::from(*x));
-                    }
-                },
-                Bracket(x) => match c {
-                    ')' => {
-                        values.stdout = false;
-                        let (result, _) = main_loop(values, temp.trim());
-                        for r in result {
-                            match r {
-                                Ok(x) => slice += &x,
-                                Err(x) => return Err(x),
-                            }
-                        }
-                        values.args = None;
-                        state = *x;
-                    }
-                    _ => {
-                        temp.push(c);
-                        state = Bracket(Box::from(*x));
-                    }
-                },
-                Pipe => {
-                    values.stdout = false;
-                    let (_,stdin) = run(&slice, values, &mut result);
-                    for r in stdin {
+                '{' => {
+                    state = CurlyBracket(Box::from(*x));
+                    state = CurlyBracket(Box::from(state));
+                }
+                _ => {
+                    temp.push(c);
+                    state = CurlyBracket(Box::from(*x));
+                }
+            },
+            SquareBracket(x) => match c {
+                ']' => {
+                    slice = slice + &compare(&temp, values);
+                    state = *x;
+                }
+                _ => {
+                    temp.push(c);
+                    state = SquareBracket(Box::from(*x));
+                }
+            },
+            Bracket(x) => match c {
+                ')' => {
+                    values.cur_com.stdout = false;
+                    let result = main_loop(values, temp.trim());
+                    for r in result {
                         match r {
-                            Ok(x) => values.pipe = Some(x),
+                            Ok(x) => slice += &x,
                             Err(x) => return Err(x),
                         }
                     }
-                    values.args = None;
+                    values.cur_com.args = None;
+                    state = *x;
+                }
+                _ => {
+                    temp.push(c);
+                    state = Bracket(Box::from(*x));
+                }
+            },
+            Pipe => {
+                values.cur_com.stdout = false;
+                let (_,stdin) = run(&slice, values, &mut result);
+                for r in stdin {
+                    match r {
+                        Ok(x) => values.cur_com.pipe = Some(x),
+                        Err(x) => return Err(x),
+                    }
+                }
+                values.cur_com.args = None;
+                state = Normal;
+                slice = String::new();
+                result = Vec::new();
+                values.cur_com.stdout = true;
+                temp = String::new();
+            }
+            And => match c {
+                '&' => {
+                    values.cur_com.stdout = false;
+                    let (_,stdout) = run(&slice, values, &mut result);
+                    for r in stdout {
+                        match r {
+                            Ok(x) => print!("{}", x),
+                            Err(x) => return Err(x),
+                        }
+                    }
+                    values.cur_com.args = None;
                     state = Normal;
                     slice = String::new();
                     result = Vec::new();
-                    values.stdout = true;
                     temp = String::new();
                 }
-                And => match c {
-                    '&' => {
-                        values.stdout = false;
-                        let (_,stdout) = run(&slice, values, &mut result);
+                _ => {
+                    let mut values_ = values.clone();
+                    values.cur_com.stdout = false;
+                    std::thread::spawn(move || {
+                        let (com,stdout) = run(&slice, &mut values_, &mut result);
                         for r in stdout {
                             match r {
-                                Ok(x) => print!("{}", x),
-                                Err(x) => return Err(x),
+                                Ok(x) => println!("{}", x),
+                                Err(x) => eprintln!("{}: {}", com, x),
                             }
                         }
-                        values.args = None;
-                        state = Normal;
-                        slice = String::new();
-                        result = Vec::new();
-                        temp = String::new();
-                    }
-                    _ => {
-                        let mut values_ = values.clone();
-                        values.stdout = false;
-                        std::thread::spawn(move || {
-                            let (com,stdout) = run(&slice, &mut values_, &mut result);
-                            for r in stdout {
-                                match r {
-                                    Ok(x) => println!("{}", x),
-                                    Err(x) => eprintln!("{}: {}", com, x),
-                                }
-                            }
-                        });
-                        values.args = None;
-                        state = Normal;
-                        slice = String::new();
-                        result = Vec::new();
-                        values.stdout = true;
-                        temp = String::new();
-                    }
-                },
-                OutRedirect => match c {
-                    '>' => {
-                        let (_,stdout) = run(&slice, values, &mut result);
-                        result = vec![String::from("write"), String::from("-a")];
-                        for r in stdout {
-                            match r {
-                                Ok(x) => values.pipe = Some(x),
-                                Err(x) => return Err(format!("{}", x)),
-                            }
+                    });
+                    values.cur_com.args = None;
+                    state = Normal;
+                    slice = String::new();
+                    result = Vec::new();
+                    values.cur_com.stdout = true;
+                    temp = String::new();
+                }
+            },
+            OutRedirect => match c {
+                '>' => {
+                    let (_,stdout) = run(&slice, values, &mut result);
+                    result = vec![String::from("write"), String::from("-a")];
+                    for r in stdout {
+                        match r {
+                            Ok(x) => values.cur_com.pipe = Some(x),
+                            Err(x) => return Err(format!("{}", x)),
                         }
-                        values.args = None;
-                        state = Normal;
-                        slice = String::new();
-                        values.stdout = true;
-                        temp = String::new();
                     }
-                    _ => {
-                        let (_,stdout) = run(&slice, values, &mut result);
-                        result = vec![String::from("write")];
-                        for r in stdout {
-                            match r {
-                                Ok(x) => values.pipe = Some(x),
-                                Err(x) => return Err(format!("{}", x)),
-                            }
+                    values.cur_com.args = None;
+                    state = Normal;
+                    slice = String::new();
+                    values.cur_com.stdout = true;
+                    temp = String::new();
+                }
+                _ => {
+                    let (_,stdout) = run(&slice, values, &mut result);
+                    result = vec![String::from("write")];
+                    for r in stdout {
+                        match r {
+                            Ok(x) => values.cur_com.pipe = Some(x),
+                            Err(x) => return Err(format!("{}", x)),
                         }
-                        values.args = None;
-                        state = Normal;
-                        slice = String::new();
-                        values.stdout = true;
-                        temp = String::new();
                     }
+                    values.cur_com.args = None;
+                    state = Normal;
+                    slice = String::new();
+                    values.cur_com.stdout = true;
+                    temp = String::new();
                 }
             }
         }
-        match state {
-            Normal => break,
-            Doublequote | Singlequote => {
-                print!("> ");
-                s_ = crate::input::input(values.history.clone());
-            }
-            CurlyBracket(_) => {
-                return Err(format!(
-                    "curly brace opened but never closed: expected }}\n"
-                ));
-            }
-            SquareBracket(_) => {
-                return Err(format!(
-                    "square bracket opened but never closed: expected ]\n"
-                ));
-            }
-            Bracket(_) => {
-                return Err(format!(
-                    "square bracket opened but never closed: expected )\n"
-                ));
-            }
-            _ => {}
+    }
+    match state {
+        CurlyBracket(_) => {
+            return Err(format!(
+                "curly brace opened but never closed: expected }}\n"
+            ));
         }
+        SquareBracket(_) => {
+            return Err(format!(
+                "square bracket opened but never closed: expected ]\n"
+            ));
+        }
+        Bracket(_) => {
+            return Err(format!(
+                "square bracket opened but never closed: expected )\n"
+            ));
+        }
+        _ => {}
     }
     slice.pop();
     result.push(slice.clone());
@@ -259,52 +267,36 @@ pub fn parse_arg(s: &str, values: &mut Values) -> Result<Vec<String>, String> {
 }
 
 fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> (String, Vec<Result<String, String>>) {
-    let mut t;
-    let result_ = result.clone();
     if result.len() == 0 {
-        t = slice;
+        values.cur_com.command = String::from(slice);
     } else {
-        t = &result_[0];
-        result.remove(0);
+        values.cur_com.command = result.remove(0);
         if slice != String::new(){
             result.push(String::from(slice));
         }
     }
-    let mut args: Vec<String> = Vec::new();
     if !result.is_empty() {
-        args = result.clone();
-    }
-    if args.is_empty(){
-        values.args = None;
-    }else{
-        values.args = Some(args);
+        values.cur_com.args = Some(result.clone());
     }
 
-    let alias;
-    if values.alias.contains_key(t){
-        if values.args.is_some(){
-            let args = values.args.clone().unwrap();
-            let mut i = 0;
-            for arg in args{
-                match arg.parse::<i32>() {
-                    Ok(x) => _ = values.vars.insert(i.to_string(), crate::VarTypes::I(x)),
-                    Err(_) => _ = values.vars.insert(i.to_string(), crate::VarTypes::S(arg)),
-                }
-                i += 1;
+    if values.alias.contains_key(&values.cur_com.command){
+        let args = values.cur_com.args.clone();
+        let alias_val = values.alias[&values.cur_com.command].clone();
+        values.com_q.push_front(alias_val);
+        let mut new = parse_arg(values).unwrap();
+
+        values.cur_com.command = new.remove(0);
+        if !new.is_empty(){
+            if let Some(s) = args {
+                new.extend(s);
             }
+            values.cur_com.args = Some(new);
         }
-        alias = crate::parsing::parse_arg(&values.alias[t].clone(), values).unwrap();
-        if values.alias[t].len() > 1{
-            let temp = Vec::from(&alias[1..]);
-            values.args = Some(temp);
-        }
-        t = &alias[0];
     }
 
-
-    let command = commands::search(&t);
+    let command = commands::search(values.cur_com.command.clone());
     if command.is_none() {
-        return (String::from(t), vec![Err(format!("Unknown command: {}", t))]);
+        return (values.cur_com.command.clone(), vec![Err(format!("Unknown command: {}", values.cur_com.command))]);
     }
-    (String::from(t), command.unwrap().run(values))
+    (values.cur_com.command.clone(), command.unwrap().run(values))
 }

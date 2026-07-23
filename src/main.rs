@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use std::{env, io};
 
 use crate::config::{get_history, run_startup, store_history};
+use crate::parsing::{parse_arg, parse_commands};
 
 mod config;
-
 pub mod parsing;
 pub mod commands;
 pub mod evaluate;
@@ -60,33 +60,51 @@ impl VarTypes {
         }
     }
 }
-
 #[derive(Clone)]
 pub struct Values {
     dir: PathBuf,
-    args: Option<Vec<String>>,
     vars: HashMap<String, VarTypes>,
-    pipe: Option<String>,
     history: VecDeque<String>,
     alias: HashMap<String, String>,
-    stdout: bool,
-    arg_extend: bool,
+    com_q: VecDeque<String>,
+    cur_com: CmdVals
 }
 
-impl Values {
-    pub fn new() -> Self{
+impl Values{
+    pub fn new() -> Self {
         Values {
             dir: env::current_dir().unwrap(),
-            args: None,
             vars: HashMap::new(),
-            pipe: None,
             history: VecDeque::new(),
             alias: HashMap::new(),
+            com_q: VecDeque::new(),
+            cur_com: CmdVals::new()
+        }
+    }
+    pub fn get_com(&mut self) -> String{
+        self.com_q.pop_front().unwrap()
+    }
+}
+
+#[derive(Clone)]
+pub struct CmdVals {
+    command: String,
+    args: Option<Vec<String>>,
+    pipe: Option<String>,
+    stdout: bool,
+}
+
+impl CmdVals {
+    pub fn new() -> Self{
+        CmdVals {
+            command: String::new(),
+            args: None,
+            pipe: None,
             stdout: true,
-            arg_extend: false,
         }
     }
 }
+
 
 pub fn normalise_dir(path: &PathBuf) -> PathBuf {
     let mut dir: PathBuf = PathBuf::new();
@@ -103,66 +121,70 @@ pub fn normalise_dir(path: &PathBuf) -> PathBuf {
     return dir;
 }
 
-pub fn main_loop(values: &mut Values, s: &str) -> (Vec<Result<String, String>>, Option<String>) {
+pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, String>> {
+
+    let mut result: Vec<Result<String, String>> = vec![];
+
     if s.is_empty() {
-        return (vec![], None);
-    }
-    let args = parsing::parse_arg(s, values);
-    let mut c: String;
-    match args {
-        Ok(mut x) => {
-            c = x.remove(0);
-            if x.is_empty() {
-                values.args = None;
-            } else {
-                values.args = Some(x);
-            }
-        }
-        Err(err) => {
-            return (vec![Err(format!("{}", err))], None);
-        }
-    }
-    let alias;
-    if values.alias.contains_key(&c){
-        if values.args.is_some(){
-            let args = values.args.clone().unwrap();
-            let mut i = 0;
-            for arg in args{
-                match arg.parse::<i32>() {
-                    Ok(x) => _ = values.vars.insert(i.to_string(), VarTypes::I(x)),
-                    Err(_) => _ = values.vars.insert(i.to_string(), VarTypes::S(arg)),
-                }
-                i += 1;
-            }
-        }
-        values.arg_extend = true;
-        alias = crate::parsing::parse_arg(&values.alias[&c].clone(), values).unwrap();
-        if values.alias[&c].len() > 1 && values.arg_extend{
-            let mut temp = Vec::from(&alias[1..]);
-            let mut args = Vec::new();
-            let mut i = 0;
-            while values.vars.contains_key(&i.to_string()){
-                args.push(values.vars[&i.to_string()].get_s());
-                i += 1;
-            }
-            if !args.is_empty(){
-                temp.extend(args);
-            }
-            values.args = Some(temp);
-        }
-        c = alias[0].clone();
+        return vec![];
     }
 
-    let command = commands::search(&c);
-    match command {
-        Some(x) => (x.run(values), Some(c)),
-        None => (vec![Err(format!("Unknown command: {}", c))], None),
+    //parse and put command into queue
+    match parse_commands(s, values) {
+        Err(e) => return vec![Err(format!("{}", e))],
+        _ => ()
     }
+
+    values.com_q.push_back(String::from(s));
+
+    while !values.com_q.is_empty(){
+
+        values.cur_com = CmdVals::new();
+
+        match parse_arg(values){
+            Ok(mut args) => {
+                values.cur_com.command = args.remove(0);
+                if args.is_empty() {
+                    values.cur_com.args = None;
+                } else{
+                    values.cur_com.args = Some(args);
+                }
+            }
+            Err(e) => {
+                return vec![Err(format!("{}", e))];
+            }
+        }
+
+        if values.alias.contains_key(&values.cur_com.command){
+            let args = values.cur_com.args.clone();
+            let alias_val = values.alias[&values.cur_com.command].clone();
+            values.com_q.push_front(alias_val);
+            let mut new = parse_arg(values).unwrap();
+
+            values.cur_com.command = new.remove(0);
+            if !new.is_empty(){
+                if let Some(s) = args {
+                    new.extend(s);
+                }
+                values.cur_com.args = Some(new);
+            }
+        }
+
+        //search and run command
+        let command = commands::search(values.cur_com.command.clone());
+        let r = match command {
+            Some(x) => x.run(values),
+            None => vec![Err(format!("Unknown command: {}", values.cur_com.command))],
+        };
+        result.extend(r);
+    }
+    result
 }
 
 fn run_arg(arg: String, values: &mut Values, args: Args){
-    values.args = Some(vec![arg.clone()]);
-    let cat = commands::search("cat");
+    values.cur_com.command = String::from("cat");
+    values.cur_com.args = Some(vec![arg.clone()]);
+    let cat = commands::search(String::from("cat"));
     let result = cat.unwrap().run(values)[0].clone();
     if result.is_err(){
         return;
@@ -183,7 +205,7 @@ fn run_arg(arg: String, values: &mut Values, args: Args){
         .map(|l| format!("{}\n", l))
         .collect();
 
-    let (result, _) = main_loop(values, s.trim());
+    let result = main_loop(values, s.trim());
 
     for r in result {
         match r {
@@ -193,7 +215,7 @@ fn run_arg(arg: String, values: &mut Values, args: Args){
             Err(_) => {}
         }
     }
-    values.args = None;
+    values.cur_com = CmdVals::new();
 }
 
 fn main() {
@@ -228,7 +250,7 @@ fn main() {
         if values.history.len() > HISTORYSIZE{
             values.history.pop_front();
         }
-        let (result, command) = main_loop(&mut values, s.trim());
+        let result = main_loop(&mut values, s.trim());
 
         for r in result {
             match r {
@@ -237,17 +259,13 @@ fn main() {
                     color = "\x1b[35m";
                 }
                 Err(x) => {
-                    match command {
-                        None => eprint!("{}", x),
-                        Some(_) => eprint!("{}: {}", command.clone().unwrap(), x),
-                    }
+                    eprint!("{}", x);
                     color = "\x1b[31m";
                 }
             }
         }
-        values.args = None;
+        values.cur_com = CmdVals::new();
         env::set_current_dir(&values.dir).expect("Invalid location");
-        values.arg_extend = false;
         let mut i = 0;
         while values.vars.contains_key(&i.to_string()){
             values.vars.remove(&i.to_string());
