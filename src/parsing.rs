@@ -298,8 +298,5 @@ fn run(slice: &str, values: &mut Values, result: &mut Vec<String>) -> (String, V
     }
 
     let command = commands::search(values.cur_com.command.clone());
-    if command.is_none() {
-        return (values.cur_com.command.clone(), vec![Err(format!("Unknown command: {}", values.cur_com.command))]);
-    }
-    (values.cur_com.command.clone(), command.unwrap().run(values))
+    (values.cur_com.command.clone(), command.run(values))
 }

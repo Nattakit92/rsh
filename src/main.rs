@@ -122,9 +122,6 @@ pub fn normalise_dir(path: &PathBuf) -> PathBuf {
 }
 
 pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, String>> {
-
-    let mut result: Vec<Result<String, String>> = vec![];
-
     if s.is_empty() {
         return vec![];
     }
@@ -135,10 +132,18 @@ pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, String>> {
         _ => ()
     }
 
+    run_queue(values)
+}
+
+///use to run command in values.com_q
+fn run_queue(values: &mut Values) -> Vec<Result<String, String>>{
+    let mut result: Vec<Result<String, String>> = vec![];
+
     while !values.com_q.is_empty(){
 
         values.cur_com = CmdVals::new();
 
+        //parse arguement
         match parse_arg(values){
             Ok(mut args) => {
                 values.cur_com.command = args.remove(0);
@@ -153,6 +158,7 @@ pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, String>> {
             }
         }
 
+        //check for alias
         if values.alias.contains_key(&values.cur_com.command){
             let args = values.cur_com.args.clone();
             let alias_val = values.alias[&values.cur_com.command].clone();
@@ -170,10 +176,7 @@ pub fn main_loop(values: &mut Values, s: &str) -> Vec<Result<String, String>> {
 
         //search and run command
         let command = commands::search(values.cur_com.command.clone());
-        let r = match command {
-            Some(x) => x.run(values),
-            None => vec![Err(format!("Unknown command: {}", values.cur_com.command))],
-        };
+        let r = command.run(values);
         result.extend(r);
     }
     result
@@ -183,7 +186,7 @@ fn run_arg(arg: String, values: &mut Values, args: Args){
     values.cur_com.command = String::from("cat");
     values.cur_com.args = Some(vec![arg.clone()]);
     let cat = commands::search(String::from("cat"));
-    let result = cat.unwrap().run(values)[0].clone();
+    let result = cat.run(values)[0].clone();
     if result.is_err(){
         return;
     }

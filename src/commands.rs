@@ -1,5 +1,6 @@
-use crate::normalise_dir;
+use crate::{CmdVals, normalise_dir, run_queue};
 use crate::{Values, VarTypes};
+use std::collections::VecDeque;
 use std::{env, vec};
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -22,22 +23,22 @@ pub enum Commands {
     If
 }
 
-pub fn search(command: String) -> Option<Commands> {
+pub fn search(command: String) -> Commands {
     use Commands::*;
     match command.as_str() {
-        "exit" => Some(Exit),
-        "echo" => Some(Echo),
-        "ls" => Some(Ls),
-        "cd" => Some(Cd),
-        "pwd" => Some(Pwd),
-        "let" => Some(Let),
-        "touch" => Some(Touch),
-        "cat" => Some(Cat),
-        "mkdir" => Some(Mkdir),
-        "write" => Some(Write),
-        "alias" => Some(Alias),
-        "if" => Some(If),
-        _ => Some(Unknown(command)),
+        "exit" => Exit,
+        "echo" => Echo,
+        "ls" => Ls,
+        "cd" => Cd,
+        "pwd" => Pwd,
+        "let" => Let,
+        "touch" => Touch,
+        "cat" => Cat,
+        "mkdir" => Mkdir,
+        "write" => Write,
+        "alias" => Alias,
+        "if" => If,
+        _ => Unknown(command),
     }
 }
 
@@ -121,7 +122,7 @@ fn try_run(command: &str, value: &mut Values) -> Vec<Result<String, String>> {
                     Err(_) => return vec![Err(format!("Not an executable\n"))],
                 }
             }
-            vec![Err(format!("Unknown command\n"))]
+            vec![Err(format!("Unknown command: {}\n", command))]
         }
     }
 }
@@ -485,20 +486,32 @@ fn alias(value: &mut Values) -> Vec<Result<String,String>>{
 
 fn if_(value: &mut Values) -> Vec<Result<String,String>>{
     if value.cur_com.args.is_none(){
-        return vec![Err(String::from("expect argument"))];
+        return vec![Err(String::from("expect argument\n"))];
     }
     let args = value.cur_com.args.clone().unwrap();
     let condition = args[0].clone().parse::<bool>();
     if condition.is_err(){
-        return vec![Err(String::from("not a valid condition"))];
+        return vec![Err(String::from("not a valid condition\n"))];
     }
     let condition = condition.unwrap();
     if !condition {
-        while value.com_q.len() > 0{
+        while !value.com_q.is_empty(){
             if value.get_com() == "end"{
                 return vec![Ok(String::new())];
             }
         }
+        return vec![Err(String::from("could not found end\n"))];
+    }else{
+        let mut value_temp = value.clone();
+        value_temp.cur_com = CmdVals::new();
+        value_temp.com_q = VecDeque::new();
+        while !value.com_q.is_empty(){
+            let com = value.get_com();
+            if com == "end"{
+                return run_queue(&mut value_temp);
+            }
+            value_temp.com_q.push_back(com);
+        }
     }
-    return vec![Ok(String::new())];
+    return vec![Err(String::from("could not found end\n"))];
 }

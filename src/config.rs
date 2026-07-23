@@ -8,15 +8,15 @@ pub fn get_history() -> VecDeque<String>{
     values.cur_com.args = Some(vec![String::from(".config"), String::from(".config/rsh")]);
 
     let mkdir = commands::search(String::from("mkdir"));
-    mkdir.unwrap().run(&mut values);
+    mkdir.run(&mut values);
     values.cur_com.args = Some(vec![String::from(".config/rsh/history")]);
 
     let touch = commands::search(String::from("touch"));
-    touch.unwrap().run(&mut values);
+    touch.run(&mut values);
 
     let mut history: VecDeque<String> = VecDeque::from([String::new()]);
     let cat = commands::search(String::from("cat"));
-    let temp = cat.unwrap().run(&mut values);
+    let temp = cat.run(&mut values);
 
     if temp.is_empty(){
         return VecDeque::new();
@@ -43,7 +43,7 @@ pub fn store_history(history: VecDeque<String>){
     let write = commands::search(String::from("write"));
     values.cur_com.pipe = Some(Vec::from(history).join("\t"));
 
-    write.unwrap().run(&mut values);
+    write.run(&mut values);
     values.cur_com = CmdVals::new();
 }
 
@@ -51,7 +51,7 @@ pub fn run_startup(values: &mut Values){
     values.dir = env::home_dir().unwrap();
     values.cur_com.args = Some(vec![String::from(".config/rsh/rsh.rsh")]);
     let cat = commands::search(String::from("cat"));
-    let result = cat.unwrap().run(values)[0].clone();
+    let result = cat.run(values)[0].clone();
     values.cur_com = CmdVals::new();
     if result.is_err(){
         return;
