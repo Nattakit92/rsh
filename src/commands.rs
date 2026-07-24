@@ -668,6 +668,13 @@ fn if_(value: &mut Values) -> Vec<Result<String,ErrType>>{
             message: format!("expect argument")
         })];
     }
+    if value.cur_com.args.clone().unwrap().len() > 1{
+        while !(value.com_q.is_empty() || value.get_com() == "end"){}
+        return vec![Err(ErrType{
+            code: 400,
+            message: format!("to many argument")
+        })];
+    }
     let args = value.cur_com.args.clone().unwrap();
     let condition = args[0].clone().parse::<bool>();
     if condition.is_err(){
@@ -677,35 +684,45 @@ fn if_(value: &mut Values) -> Vec<Result<String,ErrType>>{
             message: format!("not a valid condition")
         })];
     }
+    let stopper = vec![String::from("end"),String::from("else")];
+    let commandswithend = vec![String::from("if"),String::from("else"),String::from("while")];
+    let mut stopper_count = 1;
     let condition = condition.unwrap();
-    if !condition {
-        while !value.com_q.is_empty(){
-            if value.get_com() == "end"{
+    let mut value_temp = value.clone();
+    value_temp.cur_com = CmdVals::new();
+    value_temp.com_q = VecDeque::new();
+    while !value.com_q.is_empty(){
+        let slice = value.get_com();
+        let com = slice.trim().split(" ").next();
+        if com.is_none(){
+            continue;
+        }
+        let com_ = com.unwrap().to_string();
+        if stopper.contains(&com_){
+            stopper_count -= 1;
+        }
+        if stopper_count == 0{
+            if condition{
+                if com_ == "else"{
+                    value.cur_com.args = Some(vec![(!condition).to_string()]);
+                    if_(value);
+                }
+                return run_queue(&mut value_temp);
+            }else{
+                if com_ == "else"{
+                    value.cur_com.args = Some(vec![(!condition).to_string()]);
+                    return if_(value);
+                }
                 return vec![Ok(String::new())];
             }
         }
-        return vec![Err(ErrType{
-            code: 400,
-            message: format!("could not found end")
-        })];
-    }else{
-        let mut value_temp = value.clone();
-        value_temp.cur_com = CmdVals::new();
-        value_temp.com_q = VecDeque::new();
-        while !value.com_q.is_empty(){
-            let com = value.get_com();
-            if com == "end"{
-                return run_queue(&mut value_temp);
-            }
-            value_temp.com_q.push_back(com);
+        if commandswithend.contains(&com_){
+            stopper_count += 1;
         }
+        value_temp.com_q.push_back(slice);
     }
     vec![Err(ErrType{
         code: 400,
-        message: format!("could not found end")
+        message: format!("could not found stopper")
     })]
 }
-
-// fn while(value: &mut Values) -> Vec<Result<String,String>>{
-
-// }

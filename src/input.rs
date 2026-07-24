@@ -108,16 +108,44 @@ impl Buffer{
     }
 
     fn new_line(&mut self){
-        self.data.insert(self.y + 1, String::new());
+        let line = self.get_line();
+        let (left,right) = line.split_at(self.x);
+        self.data[self.y] = left.to_string();
+        self.data.insert(self.y + 1, right.to_string());
+        if self.y > 0{
+            print!("\x1b[{}A",self.y);
+        }
+        print!("\x1b[J");
+        for i in 0..self.data.len()-1{
+            println!("\x1b[{}G{}", START, self.data[i]);
+        }
+        print!("\x1b[{}G{}", START, self.data[self.data.len()-1]);
+        if self.data.len() - 2 - self.y > 0{
+            print!("\x1b[{}A", self.data.len() - 2 - self.y)
+        }
+        self.x = 0;
         self.y_inc();
     }
 
     fn del_line(&mut self){
         if self.y > 0{
-            self.data.remove(self.y);
+            let left = self.data[self.y-1].clone();
+            let right =  self.data.remove(self.y);
+            self.x = left.len();
+            self.data[self.y-1] = left + &right;
+            if self.y > 0{
+                print!("\x1b[{}A", self.y);
+            }
+            print!("\x1b[J");
+            for i in 0..self.data.len()-1{
+                println!("\x1b[{}G{}", START, self.data[i]);
+            }
+            print!("\x1b[{}G{}", START, self.data[self.data.len()-1]);
+            if self.data.len() - self.y > 0{
+                print!("\x1b[{}A", self.data.len() - self.y)
+            }
             self.y -= 1;
-            self.x = self.data[self.y].len();
-            print!("\x1b[1A\x1b[{}G", self.x + START);
+            print!("\x1b[{}G", self.x + START);
         }
     }
 
@@ -260,7 +288,6 @@ pub fn input(mut history: VecDeque<String>) -> String {
             }
             CTRLC => {}
             SHIFTENTER => {
-                println!();
                 buffer.new_line();
             }
             _ => {
