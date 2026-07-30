@@ -144,7 +144,7 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
             }
             CurlyBracket(x) => match c {
                 '}' => {
-                    if matches!(*x, CurlyBracket(_)) {
+                    if matches!(*x, CurlyBracket(_)) || matches!(*x, SquareBracket(_)) {
                         temp = evaluate(&temp, values);
                     } else {
                         slice += &evaluate(&temp, values);
@@ -164,6 +164,10 @@ pub fn parse_arg(values: &mut Values) -> Result<Vec<String>, String> {
                 ']' => {
                     slice = slice + &compare(&temp, values);
                     state = *x;
+                }
+                '{' => {
+                    state = SquareBracket(Box::from(*x));
+                    state = CurlyBracket(Box::from(state));
                 }
                 _ => {
                     temp.push(c);
