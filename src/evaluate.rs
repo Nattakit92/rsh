@@ -172,6 +172,11 @@ pub fn evaluate(s: &str, values: &mut Values) -> String {
         return String::new();
     }
     if vals.len() == 1 {
+
+        if vals[0].parse::<i32>().is_ok() && values.vars.contains_key(&vals[0]){
+            return values.vars[&vals[0]].get_s();
+        }
+
         return match find_var(s.trim(), values) {
             I(x) => x.to_string(),
             F(x) => x.to_string(),
