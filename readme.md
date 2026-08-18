@@ -21,8 +21,8 @@ RSH is a simple shell written in rust, build for educational purpose. My goal is
 - [x] alias
 - [x] history
 - [x] execute file
-- [ ] if else
-- [ ] comments
+- [x] if else
+- [x] comments
 - [ ] command/filename/argument completion
 
  
